@@ -163,21 +163,6 @@ def recognize():
         "matched"   : True,
     })
 
-    if not matched:
-        return jsonify({
-            "rollNumber": "Unknown",
-            "confidence": confidence,
-            "distance"  : round(best_distance, 4),
-            "matched"   : False,
-        })
-
-    return jsonify({
-        "rollNumber": best_roll,
-        "confidence": confidence,
-        "distance"  : round(best_distance, 4),
-        "matched"   : True,
-    })
-
 
 @app.route("/health", methods=["GET"])
 def health():
