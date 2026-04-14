@@ -103,7 +103,7 @@ def enroll_person():
             "maxImages": MAX_IMAGES,
         }), 400
 
-    # ── Crop with 20% padding — DeepFace needs forehead/chin context ─────
+    # ── Crop with 20% padding — OpenCV detection needs context ──────┐
     x, y, w, h = max(detected, key=lambda f: f[2] * f[3])
     pad = int(max(w, h) * 0.20)
     x1  = max(0, x - pad);            y1 = max(0, y - pad)
@@ -117,7 +117,7 @@ def enroll_person():
     if not passed:
         return jsonify({"message": reason}), 400
 
-    # ── Save full-colour image (DeepFace/ArcFace needs colour) ───────────
+    # ── Save full-colour image for best matching quality ──────────────┐
     face_colour = cv2.resize(face_colour, TARGET_SIZE)
     idx         = current + 1
     save_path   = os.path.join(folder, f"{roll_number}_{idx}.jpg")
