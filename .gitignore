@@ -1,0 +1,33 @@
+# Node.js artifacts
+node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+dist/
+build/
+
+# Environment files
+.env
+server/.env
+facefrontend/.env
+
+# OS / editor files
+.DS_Store
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+
+# Local face data
+python-face-api/faces/
