@@ -185,4 +185,5 @@ if __name__ == "__main__":
     except Exception as e:
         log.warning("Warm-up failed (ok on first run): %s", e)
 
-    app.run(port=5003, debug=True)
+    PORT = int(os.environ.get("PORT", 5003))
+    app.run(host="0.0.0.0", port=PORT, debug=False)
