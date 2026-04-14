@@ -5,14 +5,11 @@ import numpy as np
 import os
 import base64
 import logging
-from deepface import DeepFace
+import face_recognition
 
 # ── Config ───────────────────────────────────────────────────────────────────
 FACES_DIR        = "faces"
-MODEL_NAME       = "ArcFace"       # Best accuracy. Alt: "Facenet512" (faster)
-DETECTOR_BACKEND = "opencv"        # Fast. Alt: "retinaface" (more accurate, slower)
-DISTANCE_METRIC  = "cosine"
-THRESHOLD        = 0.40            # Cosine distance — lower = stricter match
+THRESHOLD        = 0.6            # face_recognition distance threshold
 MIN_FACE_PX      = 80
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -50,9 +47,9 @@ def get_enrolled_students() -> list[str]:
     ]
 
 
-def verify_against_student(face_img: np.ndarray, roll: str) -> float | None:
+def verify_against_student(face_img: np.ndarray, face_enc: np.ndarray, roll: str) -> float | None:
     """
-    Run DeepFace.verify against all images for one student.
+    Compare the given face encoding against all images for one student.
     Returns the BEST (lowest) distance found, or None if all fail.
     """
     folder    = os.path.join(FACES_DIR, roll)
@@ -65,15 +62,16 @@ def verify_against_student(face_img: np.ndarray, roll: str) -> float | None:
     for img_file in img_files:
         img_path = os.path.join(folder, img_file)
         try:
-            result = DeepFace.verify(
-                img1_path        = face_img,           # numpy array accepted
-                img2_path        = img_path,
-                model_name       = MODEL_NAME,
-                detector_backend = DETECTOR_BACKEND,
-                distance_metric  = DISTANCE_METRIC,
-                enforce_detection= False,              # face already cropped
-            )
-            dist = result["distance"]
+            known_image = face_recognition.load_image_file(img_path)
+            known_encodings = face_recognition.face_encodings(known_image)
+            
+            if len(known_encodings) == 0:
+                log.warning("  No face found in %s/%s", roll, img_file)
+                continue
+            
+            # Compare with first face in the enrolled image
+            distances = face_recognition.face_distance([known_encodings[0]], face_enc)
+            dist = float(distances[0])
             log.info("  %s/%s → %.4f", roll, img_file, dist)
             if best_distance is None or dist < best_distance:
                 best_distance = dist
@@ -111,7 +109,15 @@ def recognize():
     pad = int(max(w, h) * 0.20)
     x1  = max(0, x - pad);              y1 = max(0, y - pad)
     x2  = min(frame.shape[1], x+w+pad); y2 = min(frame.shape[0], y+h+pad)
-    face_crop = frame[y1:y2, x1:x2]    # colour — ArcFace needs BGR
+    face_crop = frame[y1:y2, x1:x2]    # RGB needed for face_recognition
+    face_crop_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
+    
+    # Extract face encoding from the captured image
+    face_encodings = face_recognition.face_encodings(face_crop_rgb)
+    if len(face_encodings) == 0:
+        return jsonify({"rollNumber": "No face detected", "confidence": None,
+                        "matched": False})
+    face_enc = face_encodings[0]  # Use first/primary face
 
     # ── 3. Check enrolled students ────────────────────────────────────────
     enrolled = get_enrolled_students()
@@ -123,7 +129,7 @@ def recognize():
     best_distance = float("inf")
 
     for roll in enrolled:
-        dist = verify_against_student(face_crop, roll)
+        dist = verify_against_student(face_crop, face_enc, roll)
         if dist is not None and dist < best_distance:
             best_distance = dist
             best_roll     = roll
@@ -166,8 +172,8 @@ def health():
                 ])
     return jsonify({
         "status"            : "ok",
-        "model"             : MODEL_NAME,
-        "detector"          : DETECTOR_BACKEND,
+        "model"             : "face_recognition (dlib)",
+        "detector"          : "dlib CNN",
         "threshold"         : THRESHOLD,
         "enrolled_students" : enrolled,
         "total_images"      : total_images,
@@ -175,13 +181,12 @@ def health():
 
 
 if __name__ == "__main__":
-    # Warm up DeepFace on startup so first request isn't slow
-    log.info("Warming up DeepFace %s model…", MODEL_NAME)
+    # Warm up face_recognition on startup so first request isn't slow
+    log.info("Warming up face_recognition…")
     try:
         dummy = np.zeros((224, 224, 3), dtype=np.uint8)
-        DeepFace.represent(dummy, model_name=MODEL_NAME,
-                           detector_backend="skip", enforce_detection=False)
-        log.info("DeepFace ready ✓")
+        face_recognition.face_encodings(dummy)
+        log.info("face_recognition ready ✓")
     except Exception as e:
         log.warning("Warm-up failed (ok on first run): %s", e)
 
