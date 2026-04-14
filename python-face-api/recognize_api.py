@@ -5,13 +5,12 @@ import numpy as np
 import os
 import base64
 import logging
-import face_recognition
 
 # ── Config ───────────────────────────────────────────────────────────────────
 FACES_DIR        = "faces"
-THRESHOLD        = 0.6            # face_recognition distance threshold
+THRESHOLD        = 0.5            # Histogram correlation threshold (0.0-1.0)
 MIN_FACE_PX      = 80
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
@@ -22,6 +21,9 @@ CORS(app)
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
+
+# ORB detector for feature matching (no external deps)
+orb = cv2.ORB_create(nfeatures=500)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -47,38 +49,51 @@ def get_enrolled_students() -> list[str]:
     ]
 
 
-def verify_against_student(face_img: np.ndarray, face_enc: np.ndarray, roll: str) -> float | None:
+def verify_against_student(face_img: np.ndarray, roll: str) -> float | None:
     """
-    Compare the given face encoding against all images for one student.
-    Returns the BEST (lowest) distance found, or None if all fail.
+    Compare captured face against all enrolled images for a student.
+    Uses ORB feature matching. Returns best score (0-1), or None if folder not found.
     """
-    folder    = os.path.join(FACES_DIR, roll)
+    folder = os.path.join(FACES_DIR, roll)
+    if not os.path.exists(folder):
+        return None
+    
     img_files = [
         f for f in os.listdir(folder)
         if f.lower().endswith((".jpg", ".jpeg", ".png"))
     ]
-    best_distance = None
+    best_score = 0.0
 
     for img_file in img_files:
         img_path = os.path.join(folder, img_file)
         try:
-            known_image = face_recognition.load_image_file(img_path)
-            known_encodings = face_recognition.face_encodings(known_image)
-            
-            if len(known_encodings) == 0:
-                log.warning("  No face found in %s/%s", roll, img_file)
+            enrolled_img = cv2.imread(img_path)
+            if enrolled_img is None:
                 continue
             
-            # Compare with first face in the enrolled image
-            distances = face_recognition.face_distance([known_encodings[0]], face_enc)
-            dist = float(distances[0])
-            log.info("  %s/%s → %.4f", roll, img_file, dist)
-            if best_distance is None or dist < best_distance:
-                best_distance = dist
+            # Detect features with ORB
+            kp1, des1 = orb.detectAndCompute(face_img, None)
+            kp2, des2 = orb.detectAndCompute(enrolled_img, None)
+            
+            if des1 is None or des2 is None:
+                log.warning("  Skipping %s/%s: no features", roll, img_file)
+                continue
+            
+            # Match features
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+            matches = bf.match(des1, des2)
+            good_matches = [m for m in matches if m.distance < 50]
+            
+            # Score based on match quality and quantity
+            score = min(1.0, len(good_matches) / max(len(kp1), len(kp2)))
+            log.info("  %s/%s → %.4f (%d matches)", roll, img_file, score, len(good_matches))
+            
+            if score > best_score:
+                best_score = score
         except Exception as e:
             log.warning("  Skipping %s/%s: %s", roll, img_file, e)
 
-    return best_distance
+    return best_score if best_score > 0 else None
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -109,15 +124,7 @@ def recognize():
     pad = int(max(w, h) * 0.20)
     x1  = max(0, x - pad);              y1 = max(0, y - pad)
     x2  = min(frame.shape[1], x+w+pad); y2 = min(frame.shape[0], y+h+pad)
-    face_crop = frame[y1:y2, x1:x2]    # RGB needed for face_recognition
-    face_crop_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
-    
-    # Extract face encoding from the captured image
-    face_encodings = face_recognition.face_encodings(face_crop_rgb)
-    if len(face_encodings) == 0:
-        return jsonify({"rollNumber": "No face detected", "confidence": None,
-                        "matched": False})
-    face_enc = face_encodings[0]  # Use first/primary face
+    face_crop = frame[y1:y2, x1:x2]
 
     # ── 3. Check enrolled students ────────────────────────────────────────
     enrolled = get_enrolled_students()
@@ -126,21 +133,35 @@ def recognize():
 
     # ── 4. Compare against every student, keep best match ─────────────────
     best_roll     = None
-    best_distance = float("inf")
+    best_score    = 0.0
 
     for roll in enrolled:
-        dist = verify_against_student(face_crop, face_enc, roll)
-        if dist is not None and dist < best_distance:
-            best_distance = dist
-            best_roll     = roll
+        score = verify_against_student(face_crop, roll)
+        if score is not None and score > best_score:
+            best_score = score
+            best_roll  = roll
 
-    log.info("Best match → %s  distance=%.4f  threshold=%.2f",
-             best_roll, best_distance, THRESHOLD)
+    log.info("Best match → %s  score=%.4f  threshold=%.2f",
+             best_roll, best_score, THRESHOLD)
 
     # ── 5. Apply threshold ────────────────────────────────────────────────
-    matched    = best_distance <= THRESHOLD
-    # Convert cosine distance (0.0–1.0) to a confidence score (100–0)
-    confidence = max(0, int((1.0 - best_distance) * 100))
+    matched    = best_score >= THRESHOLD
+    confidence = int(best_score * 100)
+
+    if not matched:
+        return jsonify({
+            "rollNumber": "Unknown",
+            "confidence": confidence,
+            "score"     : round(best_score, 4),
+            "matched"   : False,
+        })
+
+    return jsonify({
+        "rollNumber": best_roll,
+        "confidence": confidence,
+        "score"     : round(best_score, 4),
+        "matched"   : True,
+    })
 
     if not matched:
         return jsonify({
