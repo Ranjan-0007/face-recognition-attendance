@@ -1,4 +1,4 @@
-import { FaHome, FaFileAlt, FaUser, FaClock, FaSignOutAlt, FaCalendarAlt, FaSlidersH, FaUmbrellaBeach } from 'react-icons/fa';
+import { FaHome, FaFileAlt, FaUser, FaClock, FaSignOutAlt, FaSlidersH, FaUmbrellaBeach, FaBook } from 'react-icons/fa';
 import { Link, useLocation } from 'react-router-dom';
 
 const Sidebar = () => {
@@ -9,17 +9,17 @@ const Sidebar = () => {
     { to: '/Addstudent',      icon: <FaUser />,           label: 'Add Students',     color: 'text-blue-600'   },
     { to: '/Enrolled',        icon: <FaFileAlt />,        label: 'Enrolled',         color: 'text-red-500'    },
     { to: '/Period',          icon: <FaClock />,          label: 'Period Wise',      color: 'text-green-500'  },
-    { to: '/timetable',       icon: <FaCalendarAlt />,    label: 'Timetable',        color: 'text-amber-500'  },
-    { to: '/period-settings', icon: <FaSlidersH />,       label: 'Period Settings',  color: 'text-indigo-500' },
+    // { to: '/period-settings', icon: <FaSlidersH />,       label: 'Period Settings',  color: 'text-indigo-500' },
     { to: '/holidays',        icon: <FaUmbrellaBeach />,  label: 'Holidays',         color: 'text-orange-500' },
+    { to: '/courses',         icon: <FaBook />,           label: 'Manage Courses',   color: 'text-cyan-500'   },
   ];
 
   return (
     <div className="w-full lg:w-64 bg-white shadow-xl rounded-2xl p-4 flex flex-col justify-between min-h-[90vh]">
       <div>
         <div className="flex items-center justify-center mb-8 mt-2">
-          <div className="w-10 h-10 rounded-xl bg-[#1E2A78] flex items-center justify-center mr-2">
-            <span className="text-white font-bold text-sm">GN</span>
+          <div className="w-15 h-10 rounded-xl bg-[#1E2A78] flex items-center justify-center mr-2">
+            <span className="text-white font-bold text-sm">GNDU</span>
           </div>
           <h2 className="text-lg font-bold text-gray-800">Admin Panel</h2>
         </div>

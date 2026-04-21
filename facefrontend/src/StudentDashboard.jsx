@@ -192,6 +192,7 @@ const StudentDashboard = () => {
   const [preciseStats,     setPreciseStats]     = useState(null);
   const [periods,          setPeriods]          = useState([]);
   const [timetable,        setTimetable]        = useState({});
+  const [todaySubstitutes, setTodaySubstitutes] = useState([]);
   const [loading,          setLoading]          = useState(true);
   const [activeTab,        setActiveTab]        = useState("dashboard");
   const [upcomingHolidays, setUpcomingHolidays] = useState([]);
@@ -261,6 +262,16 @@ const StudentDashboard = () => {
           const ttRes  = await fetch(`http://localhost:5001/api/timetable/${encodeURIComponent(className)}`);
           const ttData = await ttRes.json();
           setTimetable(ttData?.slots || {});
+
+          try {
+            const today = new Date().toISOString().split('T')[0];
+            const subRes = await fetch(`http://localhost:5001/api/substitutes/today?department=${encodeURIComponent(student.department || "")}`);
+            const subData = await subRes.json();
+            setTodaySubstitutes(Array.isArray(subData) ? subData : []);
+          } catch (err) {
+            console.error("Failed to fetch substitutes:", err);
+            setTodaySubstitutes([]);
+          }
         }
       } catch (err) { console.error("Fetch error:", err); }
       setLoading(false);
@@ -314,6 +325,8 @@ const StudentDashboard = () => {
   const presentToday      = periodAttendance.filter(l => new Date(l.recognizedAt).toLocaleDateString() === today);
   const todayPeriodsCount = new Set(presentToday.map(l => l.period)).size;
 
+  const classSubstitutes = todaySubstitutes.filter(sub => sub.className === (profile?.className || student?.className));
+
   // ✅ Precise stats — from server (timetable × weeks enrolled)
   const overallPercent     = preciseStats?.overallPercent  ?? 0;
   const totalAttended      = preciseStats?.totalAttended   ?? periodAttendance.length;
@@ -365,6 +378,16 @@ const StudentDashboard = () => {
     const e = p.endHour   * 60 + p.endMinute;
     return currentTotalMin >= s && currentTotalMin < e;
   });
+  const currentSlotIndex = currentPeriod ? periods.findIndex(p =>
+    p.startHour === currentPeriod.startHour &&
+    p.startMinute === currentPeriod.startMinute &&
+    p.endHour === currentPeriod.endHour &&
+    p.endMinute === currentPeriod.endMinute
+  ) : -1;
+  const currentSubstitute = currentSlotIndex >= 0 ?
+    classSubstitutes.find(sub => sub.slotIndex === currentSlotIndex)
+    : null;
+
   const nextPeriod = isSunday ? null : periods
     .map(p => ({ ...p, start: p.startHour * 60 + p.startMinute }))
     .filter(p => p.start > currentTotalMin)
@@ -533,16 +556,27 @@ const StudentDashboard = () => {
 
             {/* Current/Next period banner */}
             {!isSunday && currentPeriod && (
-              <div className="bg-green-600 rounded-2xl p-4 mb-5 flex items-center justify-between">
-                <div>
-                  <p className="text-green-100 text-xs font-semibold uppercase tracking-wide">Class in progress now</p>
-                  <p className="text-white font-black text-lg">{currentPeriod.subject}</p>
-                  <p className="text-green-200 text-xs">{formatTime(currentPeriod.startHour, currentPeriod.startMinute)} – {formatTime(currentPeriod.endHour, currentPeriod.endMinute)}</p>
+              <div className={`rounded-2xl p-4 mb-5 flex flex-col gap-4 ${currentSubstitute ? "bg-yellow-500" : "bg-green-600"}`}>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-white/90 text-xs font-semibold uppercase tracking-wide">Class in progress now</p>
+                    <p className="text-white font-black text-lg">{currentPeriod.subject}</p>
+                    <p className="text-white/80 text-xs">{formatTime(currentPeriod.startHour, currentPeriod.startMinute)} – {formatTime(currentPeriod.endHour, currentPeriod.endMinute)}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="w-3 h-3 rounded-full bg-white animate-pulse" />
+                    <p className="text-white/80 text-xs font-medium">Mark attendance now!</p>
+                  </div>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <div className="w-3 h-3 rounded-full bg-white animate-pulse" />
-                  <p className="text-green-200 text-xs font-medium">Mark attendance now!</p>
-                </div>
+                {currentSubstitute && (
+                  <div className="rounded-2xl bg-white/90 p-3 text-sm font-semibold text-gray-800 border border-yellow-200">
+                    {currentSubstitute.substituteTeacher ? (
+                      <>This lecture is being handled by <span className="font-bold">{currentSubstitute.substituteTeacher}</span> instead of your regular teacher.</>
+                    ) : (
+                      <>This class has been <span className="font-bold">cancelled</span> by HOD.</>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {!isSunday && !currentPeriod && nextPeriod && (
@@ -767,8 +801,17 @@ const StudentDashboard = () => {
               <>
                 {todaySlots.length > 0 && !isSunday && (
                   <div className="p-5 bg-blue-50 border-b border-blue-100">
-                    <p className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-3">Today — {todayName}</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                    <div className="flex flex-col gap-3">
+                      <p className="text-xs font-bold text-blue-600 uppercase tracking-wide">Today — {todayName}</p>
+                      {classSubstitutes.length > 0 && (
+                        <div className="rounded-2xl bg-yellow-50 border border-yellow-200 p-3 text-xs text-yellow-700">
+                          {classSubstitutes.length === 1
+                            ? "One of your classes today has a substitute or cancellation." 
+                            : `${classSubstitutes.length} of your classes today have substitute/cancellation updates.`}
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mt-3">
                       {todaySlots.map((slot, i) => {
                         const p = periods[i];
                         const isNow = p && (() => {
@@ -777,6 +820,7 @@ const StudentDashboard = () => {
                           return currentTotalMin >= s && currentTotalMin < e;
                         })();
                         const markedToday = presentToday.some(l => l.period === slot.subject);
+                        const substitute = classSubstitutes.find(sub => sub.slotIndex === i);
                         return (
                           <div key={i} className={`rounded-xl p-3 border-2 ${
                             isNow
@@ -793,6 +837,11 @@ const StudentDashboard = () => {
                             </p>
                             {slot.teacher && <p className="text-xs text-blue-500 mt-0.5">{slot.teacher}</p>}
                             {slot.room && <p className="text-xs text-gray-400 mt-0.5">{slot.room}</p>}
+                            {substitute && (
+                              <div className="mt-2 rounded-full bg-yellow-100 text-yellow-800 px-2 py-1 text-[11px] font-semibold inline-flex items-center gap-1">
+                                {substitute.substituteTeacher ? `Substitute: ${substitute.substituteTeacher}` : "Cancelled by HOD"}
+                              </div>
+                            )}
                             {markedToday && slot.subject && (
                               <span className="text-xs text-green-600 font-semibold bg-green-50 px-1.5 py-0.5 rounded-full mt-1 inline-block">✓ Marked</span>
                             )}

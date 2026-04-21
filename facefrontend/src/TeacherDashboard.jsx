@@ -20,6 +20,7 @@ const TeacherDashboard = () => {
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
   const [showPendingOnly, setShowPendingOnly] = useState(false);
   const [teacherSchedule, setTeacherSchedule] = useState({});
+  const [todaySubstitutes, setTodaySubstitutes] = useState([]);
   const [periods, setPeriods]                 = useState([]);
   const [loading, setLoading]                 = useState(false);
   const [searchText, setSearchText]           = useState("");
@@ -120,12 +121,26 @@ const TeacherDashboard = () => {
         setAttendance([]);
       }
 
+      await fetchTodaySubstitutes(deptValue);
       await fetchTodayAttendance(activeTeacher, myStudents, derivedSubjects, attendanceDate);
     } catch (err) { console.error(err); }
     setLoading(false);
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  const fetchTodaySubstitutes = async (department) => {
+    if (!department) return;
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res   = await fetch(`http://localhost:5001/api/substitutes/today?department=${encodeURIComponent(department)}`);
+      const data  = await res.json();
+      setTodaySubstitutes(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+      setTodaySubstitutes([]);
+    }
+  };
 
   const fetchTodayAttendance = async (activeTeacher = teacherInfo, myStudents = students, derivedSubjects = allMySubjects, date = attendanceDate) => {
     if (!activeTeacher.name) return;
@@ -171,22 +186,93 @@ const TeacherDashboard = () => {
 
   const confirmAllAttendance = async () => {
     if (!teacherInfo.name) return;
+    const pendingLogs = filteredSubjectTodayAttendance.filter(log => !log.confirmed);
+    if (!pendingLogs.length) return;
+    if (!subjectFilter) {
+      try {
+        const res = await fetch("http://localhost:5001/api/attendance/confirm-all", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ teacherName: teacherInfo.name, date: attendanceDate })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(data.message, "success");
+        } else {
+          showToast(data.message || "Confirm all failed", "error");
+        }
+      } catch (err) {
+        console.error(err);
+        showToast("Failed to confirm all attendance", "error");
+      }
+    } else {
+      if (!window.confirm(`Confirm all ${pendingLogs.length} pending records for ${subjectFilter}?`)) return;
+      try {
+        const promises = pendingLogs.map(log =>
+          fetch(`http://localhost:5001/api/attendance/${log._id}/confirm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ teacherName: teacherInfo.name })
+          }).then(res => res.json().then(data => ({ res, data })))
+            .catch(err => ({ err }))
+        );
+        const results = await Promise.all(promises);
+        const successCount = results.filter(r => r.res?.ok).length;
+        if (successCount === pendingLogs.length) {
+          showToast(`Confirmed ${successCount} records for ${subjectFilter}`, "success");
+        } else {
+          showToast(`Confirmed ${successCount} of ${pendingLogs.length} records for ${subjectFilter}`, "warning");
+        }
+      } catch (err) {
+        console.error(err);
+        showToast("Failed to confirm filtered attendance", "error");
+      }
+    }
+    await fetchAll();
+  };
+
+  const cancelAttendance = async (logId) => {
+    if (!logId) return;
+    if (!window.confirm("Delete this unconfirmed attendance record?")) return;
     try {
-      const res = await fetch("http://localhost:5001/api/attendance/confirm-all", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teacherName: teacherInfo.name, date: attendanceDate })
+      const res = await fetch(`http://localhost:5001/api/attendance/${logId}`, {
+        method: "DELETE"
       });
       const data = await res.json();
       if (res.ok) {
-        showToast(data.message, "success");
+        showToast(data.message || "Attendance deleted", "success");
       } else {
-        showToast(data.message || "Confirm all failed", "error");
+        showToast(data.message || "Delete failed", "error");
       }
       await fetchAll();
     } catch (err) {
       console.error(err);
-      showToast("Failed to confirm all attendance", "error");
+      showToast("Failed to delete attendance", "error");
+    }
+  };
+
+  const cancelAllPendingAttendance = async () => {
+    const pendingLogs = filteredSubjectTodayAttendance.filter(log => !log.confirmed);
+    if (!pendingLogs.length) return;
+    if (!window.confirm(`Delete ${pendingLogs.length} pending record${pendingLogs.length === 1 ? '' : 's'}${subjectFilter ? ` for ${subjectFilter}` : ''}?`)) return;
+
+    try {
+      const deletePromises = pendingLogs.map(log =>
+        fetch(`http://localhost:5001/api/attendance/${log._id}`, { method: "DELETE" })
+          .then(res => ({ res, log }))
+          .catch(err => ({ err, log }))
+      );
+      const results = await Promise.all(deletePromises);
+      const failed = results.filter(r => !r.res?.ok);
+      if (failed.length === 0) {
+        showToast(`Deleted ${pendingLogs.length} pending records${subjectFilter ? ` for ${subjectFilter}` : ''}`, "success");
+      } else {
+        showToast(`Deleted ${pendingLogs.length - failed.length} of ${pendingLogs.length} pending records${subjectFilter ? ` for ${subjectFilter}` : ''}`, "warning");
+      }
+      await fetchAll();
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to delete pending attendance", "error");
     }
   };
 
@@ -215,6 +301,7 @@ const TeacherDashboard = () => {
   };
 
   const today   = new Date().toLocaleDateString();
+  const todayStr = new Date().toISOString().split('T')[0];
   // ✅ FIX: Use full English day name to match timetable keys
   const todayName = new Date().toLocaleDateString("en-US", { weekday: "long" });
   const now       = new Date();
@@ -223,6 +310,17 @@ const TeacherDashboard = () => {
   // ✅ FIX: No classes on Sunday
   const isWeekend  = now.getDay() === 0; // Sunday = 0
   const todayPeriods = isWeekend ? [] : (teacherSchedule[todayName] || []);
+
+  const teacherTodaySubstitutes = todaySubstitutes.filter(sub =>
+    sub.originalTeacher === teacherInfo.name || sub.substituteTeacher === teacherInfo.name
+  );
+  const myOriginalSubstitutes = todaySubstitutes.filter(sub => sub.originalTeacher === teacherInfo.name);
+  const mySubstituteAssignments = todaySubstitutes.filter(sub => sub.substituteTeacher === teacherInfo.name);
+
+  const getSubstituteInfoForSlot = (slot) => {
+    if (!slot || !slot.className || slot.slotIndex === undefined) return null;
+    return todaySubstitutes.find(sub => sub.className === slot.className && sub.slotIndex === slot.slotIndex);
+  };
 
   const getStudentPercent = (rollNumber) => {
     const logs = attendance.filter(l => l.rollNumber === rollNumber);
@@ -352,6 +450,8 @@ const TeacherDashboard = () => {
     fetchAll();
   };
 
+  const [subjectFilter, setSubjectFilter] = useState("");
+
   const filteredStudents = students.filter(s =>
     s.name?.toLowerCase().includes(searchText.toLowerCase()) ||
     s.rollNumber?.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -362,6 +462,12 @@ const TeacherDashboard = () => {
     new Date(l.recognizedAt).toISOString().slice(0, 10) === attendanceDate
   );
   const attendanceDateLabel = attendanceDate === today ? "Present Today" : `Present ${attendanceDate}`;
+
+  const presentTodayCount = new Set(todayAttendance.map(l => l.rollNumber)).size;
+  const filteredSubjectTodayAttendance = todayAttendance.filter(log =>
+    !subjectFilter || log.period === subjectFilter
+  );
+  const visiblePresentCount = new Set(filteredSubjectTodayAttendance.map(l => l.rollNumber)).size;
 
   const pad = n => String(n).padStart(2, "0");
   const ic  = "w-full border-2 border-gray-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-600 bg-gray-50";
@@ -564,6 +670,21 @@ const TeacherDashboard = () => {
                                   <p className="text-xs text-blue-600 mt-0.5">{slot.className}</p>
                                   {slot.room && <p className="text-xs text-gray-400">{slot.room}</p>}
                                   {isNow && <span className="text-xs bg-green-500 text-white px-1.5 py-0.5 rounded-full font-bold mt-1 inline-block">Now</span>}
+                                  {isToday && (
+                                    (() => {
+                                      const substitute = getSubstituteInfoForSlot(slot);
+                                      if (!substitute) return null;
+                                      return substitute.substituteTeacher ? (
+                                        <span className="mt-2 inline-flex items-center rounded-full bg-yellow-100 text-yellow-700 px-2 py-1 text-[10px] font-semibold">
+                                          Sub by {substitute.substituteTeacher}
+                                        </span>
+                                      ) : (
+                                        <span className="mt-2 inline-flex items-center rounded-full bg-red-100 text-red-700 px-2 py-1 text-[10px] font-semibold">
+                                          Class cancelled
+                                        </span>
+                                      );
+                                    })()
+                                  )}
                                 </div>
                               ) : <span className="text-gray-200">—</span>}
                             </td>
@@ -589,6 +710,28 @@ const TeacherDashboard = () => {
         {activeTab === "today" && (
           <div className="bg-white rounded-2xl shadow-sm p-5">
             <h2 className="font-bold text-gray-800 text-sm mb-1">Today's Classes — {todayName}</h2>
+            {teacherTodaySubstitutes.length > 0 && (
+              <div className="mb-4 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-700">
+                {myOriginalSubstitutes.length > 0 && (
+                  <div>{myOriginalSubstitutes.length} of your assigned classes were updated by HOD: substitute or cancelled.</div>
+                )}
+                {mySubstituteAssignments.length > 0 && (
+                  <div>{mySubstituteAssignments.length} substitute teaching assignment{mySubstituteAssignments.length === 1 ? '' : 's'} were added for you today.</div>
+                )}
+              </div>
+            )}
+            {mySubstituteAssignments.length > 0 && (
+              <div className="mb-4 rounded-2xl border border-green-100 bg-green-50 p-4 text-sm text-green-800">
+                <div className="font-semibold mb-2">Your substitute assignments today</div>
+                {mySubstituteAssignments.map(sub => (
+                  <div key={`${sub.className}-${sub.slotIndex}`} className="mb-2 last:mb-0">
+                    <div className="text-xs text-gray-700">{sub.className} · Period {sub.slotIndex + 1}</div>
+                    <div className="font-medium">{sub.subject}</div>
+                    {sub.reason && <div className="text-xs text-gray-500">{sub.reason}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
             {/* ✅ FIX: Show Sunday message */}
             {isWeekend ? (
               <div className="text-center py-16">
@@ -624,6 +767,19 @@ const TeacherDashboard = () => {
                       <p className="text-xs text-blue-600 font-semibold mt-0.5">{slot.className}</p>
                       {slot.room && <p className="text-xs text-gray-400 mt-0.5">{slot.room}</p>}
                       {p && <p className="text-xs text-gray-500 font-mono mt-1">{pad(p.startHour)}:{pad(p.startMinute)} – {pad(p.endHour)}:{pad(p.endMinute)}</p>}
+                      {(() => {
+                        const substitute = getSubstituteInfoForSlot(slot);
+                        if (!substitute) return null;
+                        return substitute.substituteTeacher ? (
+                          <div className="mt-3 text-xs font-semibold text-yellow-700 bg-yellow-50 rounded-full inline-flex items-center px-2 py-1">
+                            Substitute: {substitute.substituteTeacher}
+                          </div>
+                        ) : (
+                          <div className="mt-3 text-xs font-semibold text-red-700 bg-red-50 rounded-full inline-flex items-center px-2 py-1">
+                            Class cancelled by HOD
+                          </div>
+                        );
+                      })()}
                       <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2">
                         <FaClipboardCheck className={`text-xs ${presentCount > 0 ? "text-green-500" : "text-gray-300"}`} />
                         <span className="text-xs text-gray-500">{presentCount}/{classStudents} present</span>
@@ -639,10 +795,11 @@ const TeacherDashboard = () => {
         {/* ── ATTENDANCE ── */}
         {activeTab === "attendance" && (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-5">
               {[
                 { label: "My Students",   value: students.length, color: "text-[#1E2A78]" },
                 { label: attendanceDateLabel, value: new Set(filteredAttendanceByDate.map(l => l.rollNumber)).size, color: "text-green-600" },
+                { label: "Today Present", value: presentTodayCount, color: "text-emerald-600" },
                 { label: "Total Logs",    value: attendance.length, color: "text-blue-600" },
                 { label: "My Subjects",   value: allMySubjects.length, color: "text-purple-600" },
               ].map(({ label, value, color }) => (
@@ -663,18 +820,37 @@ const TeacherDashboard = () => {
                   <input type="date" value={attendanceDate}
                     onChange={e => { setAttendanceDate(e.target.value); fetchTodayAttendance(undefined, undefined, undefined, e.target.value); }}
                     className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-600 bg-white" />
+                  <label className="text-xs text-gray-500">Subject</label>
+                  <select value={subjectFilter} onChange={e => setSubjectFilter(e.target.value)}
+                    className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-green-600 bg-white">
+                    <option value="">All subjects</option>
+                    {allMySubjects.map(subject => (
+                      <option key={subject} value={subject}>{subject}</option>
+                    ))}
+                  </select>
                   <button onClick={() => setShowPendingOnly(prev => !prev)}
                     className={`px-4 py-2 rounded-xl border text-xs font-semibold transition ${showPendingOnly ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'}`}>
                     {showPendingOnly ? 'Showing pending only' : 'Show pending only'}
                   </button>
-                  {todayAttendance.filter(log => !log.confirmed).length > 0 && (
-                    <button onClick={confirmAllAttendance}
-                      className="px-4 py-2 rounded-xl bg-green-700 text-white text-xs font-semibold hover:bg-green-800 transition">
-                      Confirm all ({todayAttendance.filter(log => !log.confirmed).length})
-                    </button>
+                  {filteredSubjectTodayAttendance.filter(log => !log.confirmed).length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={confirmAllAttendance}
+                        className="px-4 py-2 rounded-xl bg-green-700 text-white text-xs font-semibold hover:bg-green-800 transition">
+                        Confirm all ({filteredSubjectTodayAttendance.filter(log => !log.confirmed).length})
+                      </button>
+                      <button onClick={cancelAllPendingAttendance}
+                        className="px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition">
+                        Delete pending ({filteredSubjectTodayAttendance.filter(log => !log.confirmed).length})
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
+              {subjectFilter && (
+                <div className="mb-4 text-xs text-gray-500">
+                  Showing subject <span className="font-semibold text-gray-800">{subjectFilter}</span> — {filteredSubjectTodayAttendance.length} logs, {visiblePresentCount} unique student{visiblePresentCount === 1 ? '' : 's'} present
+                </div>
+              )}
 
               {todayAttendance.length === 0 ? (
                 <div className="text-center py-10 text-gray-400">
@@ -693,7 +869,7 @@ const TeacherDashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {todayAttendance.filter(log => !showPendingOnly || !log.confirmed)
+                      {filteredSubjectTodayAttendance.filter(log => !showPendingOnly || !log.confirmed)
                       .map((log, i) => (
                         <tr key={log._id || i} className="hover:bg-gray-50 transition">
                           <td className="px-4 py-3 font-medium text-gray-800">{log.name}</td>
@@ -708,10 +884,16 @@ const TeacherDashboard = () => {
                           </td>
                           <td className="px-4 py-3 text-xs">
                             {!log.confirmed ? (
-                              <button onClick={() => confirmAttendance(log._id)}
-                                className="px-3 py-1 rounded-xl bg-green-700 text-white font-semibold hover:bg-green-800 transition">
-                                Confirm
-                              </button>
+                              <div className="flex flex-wrap gap-2">
+                                <button onClick={() => confirmAttendance(log._id)}
+                                  className="px-3 py-1 rounded-xl bg-green-700 text-white font-semibold hover:bg-green-800 transition">
+                                  Confirm
+                                </button>
+                                <button onClick={() => cancelAttendance(log._id)}
+                                  className="px-3 py-1 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 transition">
+                                  Cancel
+                                </button>
+                              </div>
                             ) : (
                               <span className="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-700 px-2 py-1 text-[11px] font-semibold">
                                 Confirmed

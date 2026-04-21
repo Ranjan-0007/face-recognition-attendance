@@ -1,4 +1,4 @@
-# Face Rego
+# Face Recognition
 
 A face recognition attendance system with a React frontend, Node/Express backend, and Python face enrollment scripts.
 

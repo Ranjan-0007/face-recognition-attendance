@@ -156,6 +156,18 @@ const substituteSchema = new mongoose.Schema({
 });
 const SubstituteRecord = mongoose.model('SubstituteRecord', substituteSchema);
 
+// ── COURSES MANAGEMENT SCHEMA ──────────────────────────────────────
+const courseManagementSchema = new mongoose.Schema({
+  department:  { type: String, unique: true },
+  courses:     [{
+    name:        String,
+    semesters:   Number
+  }],
+  updatedBy:   String,
+  updatedAt:   { type: Date, default: Date.now }
+});
+const CourseManagement = mongoose.model('CourseManagement', courseManagementSchema);
+
 // ── HELPERS ───────────────────────────────────────────────────────
 
 // College working days — Sunday is a holiday, Saturday is optional
@@ -1277,6 +1289,137 @@ app.get('/api/teacher/me', async (req, res) => {
   } catch (err) {
     console.error('Teacher me error:', err);
     res.status(500).json({ message: 'Failed to fetch teacher data' });
+  }
+});
+
+// ── COURSE MANAGEMENT ROUTES (ADMIN) ──────────────────────────────
+
+// Get all courses for a department
+app.get('/api/admin/courses/:department', async (req, res) => {
+  try {
+    const { department } = req.params;
+    const doc = await CourseManagement.findOne({ department });
+    if (doc) {
+      res.json({ courses: doc.courses });
+    } else {
+      res.json({ courses: [] });
+    }
+  } catch (err) {
+    console.error('Error fetching courses:', err);
+    res.status(500).json({ message: 'Failed to fetch courses' });
+  }
+});
+
+// Create new course in a department
+app.post('/api/admin/courses', async (req, res) => {
+  try {
+    const { department, courseName, semesters, token } = req.body;
+    
+    // Verify admin token
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role !== 'admin') {
+      return res.status(403).json({ message: 'Only admins can manage courses' });
+    }
+
+    if (!department || !courseName || !semesters) {
+      return res.status(400).json({ message: 'Department, course name, and semesters required' });
+    }
+
+    let doc = await CourseManagement.findOne({ department });
+    if (!doc) {
+      doc = new CourseManagement({ department, courses: [] });
+    }
+
+    // Check if course already exists
+    if (doc.courses.some(c => c.name === courseName)) {
+      return res.status(400).json({ message: 'Course already exists' });
+    }
+
+    doc.courses.push({ name: courseName, semesters });
+    doc.updatedBy = decoded.username;
+    doc.updatedAt = new Date();
+    await doc.save();
+
+    res.status(201).json({ message: 'Course created', course: { name: courseName, semesters } });
+  } catch (err) {
+    console.error('Error creating course:', err);
+    res.status(500).json({ message: 'Failed to create course' });
+  }
+});
+
+// Update course semesters
+app.put('/api/admin/courses', async (req, res) => {
+  try {
+    const { department, oldCourseName, courseName, semesters, token } = req.body;
+    
+    // Verify admin token
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role !== 'admin') {
+      return res.status(403).json({ message: 'Only admins can manage courses' });
+    }
+
+    if (!department || !oldCourseName || !courseName || !semesters) {
+      return res.status(400).json({ message: 'Department, old course name, new course name, and semesters required' });
+    }
+
+    const doc = await CourseManagement.findOne({ department });
+    if (!doc) {
+      return res.status(404).json({ message: 'Department not found' });
+    }
+
+    const course = doc.courses.find(c => c.name === oldCourseName);
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    course.name = courseName;
+    course.semesters = semesters;
+    doc.updatedBy = decoded.username;
+    doc.updatedAt = new Date();
+    await doc.save();
+
+    res.json({ message: 'Course updated', course });
+  } catch (err) {
+    console.error('Error updating course:', err);
+    res.status(500).json({ message: 'Failed to update course' });
+  }
+});
+
+// Delete course from department
+app.delete('/api/admin/courses', async (req, res) => {
+  try {
+    const { department, courseName, token } = req.body;
+    
+    // Verify admin token
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.role !== 'admin') {
+      return res.status(403).json({ message: 'Only admins can manage courses' });
+    }
+
+    if (!department || !courseName) {
+      return res.status(400).json({ message: 'Department and course name required' });
+    }
+
+    const doc = await CourseManagement.findOne({ department });
+    if (!doc) {
+      return res.status(404).json({ message: 'Department not found' });
+    }
+
+    const initialLength = doc.courses.length;
+    doc.courses = doc.courses.filter(c => c.name !== courseName);
+
+    if (doc.courses.length === initialLength) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    doc.updatedBy = decoded.username;
+    doc.updatedAt = new Date();
+    await doc.save();
+
+    res.json({ message: 'Course deleted' });
+  } catch (err) {
+    console.error('Error deleting course:', err);
+    res.status(500).json({ message: 'Failed to delete course' });
   }
 });
 

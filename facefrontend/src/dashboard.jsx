@@ -228,7 +228,7 @@ const Dashboard = () => {
               </p>
             </div>
             <div className="flex gap-2 flex-wrap">
-              {["attendance","timetables","staff"].map(t => (
+              {["attendance","timetables","staff","courses"].map(t => (
                 <button key={t} onClick={() => setActiveAdminTab(t)}
                   className={`px-4 py-2 rounded-xl text-sm font-semibold
                     transition capitalize ${
@@ -238,7 +238,8 @@ const Dashboard = () => {
                   }`}>
                   {t === "attendance" ? "Attendance"
                    : t === "timetables" ? "View Timetables"
-                   : "HOD & Teachers"}
+                   : t === "staff" ? "HOD & Teachers"
+                   : "Manage Courses"}
                 </button>
               ))}
               {activeAdminTab === "attendance" && (
@@ -738,6 +739,22 @@ const Dashboard = () => {
                   })}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ── COURSES MANAGEMENT TAB ── */}
+          {activeAdminTab === "courses" && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm">
+              <div className="mb-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-2">Manage College Courses</h3>
+                <p className="text-sm text-gray-600">Create new courses and manage semesters for each department</p>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+                <p className="text-blue-900 text-sm font-medium">ℹ️ Click below to open the Course Manager</p>
+              </div>
+              <a href="/courses" className="inline-block px-6 py-3 bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white font-semibold rounded-xl hover:shadow-lg transition transform hover:scale-105">
+                Open Course Manager →
+              </a>
             </div>
           )}
 

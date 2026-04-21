@@ -16,6 +16,7 @@ import HODDashboard     from './HODDashboard';
 import TeacherLogin     from './TeacherLogin';
 import TeacherDashboard from './TeacherDashboard';
 import HolidayManager   from './Holidaymanager';
+import CourseManager    from './CourseManager';
 import { AdminRoute, StudentRoute } from './ProtectedRoute';
 
 const HODRoute = ({ children }) => {
@@ -55,6 +56,8 @@ function App() {
         <Route path="/period-settings" element={<AdminRoute><PeriodSettings /></AdminRoute>} />
         {/* ✅ NEW: Holiday Calendar — admin manages college holidays */}
         <Route path="/holidays"        element={<AdminRoute><HolidayManager /></AdminRoute>} />
+        {/* ✅ NEW: Course Management — admin creates courses and adds semesters */}
+        <Route path="/courses"         element={<AdminRoute><CourseManager /></AdminRoute>} />
 
         {/* HOD */}
         <Route path="/hod-dashboard"     element={<HODRoute><HODDashboard /></HODRoute>} />

@@ -1258,8 +1258,9 @@ const HODDashboard = () => {
                       <td className="px-4 py-3">
                         <button onClick={() => setDeleteAttModal({ rollNumber: log.rollNumber, name: log.name })}
                           title="Delete today's attendance for this student"
-                          className="text-orange-500 hover:text-orange-700 text-base">
-                          🗓
+                          className="inline-flex items-center gap-2 rounded-lg border border-orange-100 bg-orange-50 px-3 py-1 text-sm font-semibold text-orange-600 hover:bg-orange-100 hover:text-orange-700 transition">
+                          <FaTrash className="text-base" />
+                          Delete
                         </button>
                       </td>
                     </tr>
