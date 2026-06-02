@@ -46,7 +46,7 @@ const Signin = () => {
     <div className="mx-auto flex h-screen max-w-lg flex-col md:max-w-none md:flex-row md:pr-10">
       {/* Left panel */}
       <div className="max-w-[50rem] rounded-3xl bg-gradient-to-t from-blue-700 via-blue-700 to-blue-600 px-4 py-10 text-white sm:px-10 md:m-6 md:mr-8">
-        <p className="mb-20 font-bold tracking-wider">College Admin Panel</p>
+        <p className="mb-10 font-bold tracking-wider">College Admin Panel</p>
         <p className="mb-4 text-3xl font-bold md:text-4xl md:leading-snug">
           Welcome to <br />
           <span className="text-yellow-300">Guru Nanak Dev University College</span>
@@ -82,6 +82,16 @@ const Signin = () => {
               <div>
                 <p className="text-white font-bold text-sm">Student Portal</p>
                 <p className="text-blue-200 text-xs">View your attendance</p>
+              </div>
+              <span className="text-white/60">→</span>
+            </div>
+          </Link>
+          <Link to="/">
+            <div className="bg-white/10 hover:bg-white/20 rounded-xl px-4 py-3
+              cursor-pointer transition flex items-center justify-between mt-2">
+              <div>
+                <p className="text-white font-bold text-sm">Attendance Home</p>
+                <p className="text-blue-200 text-xs">Mark attendance with face recognition</p>
               </div>
               <span className="text-white/60">→</span>
             </div>

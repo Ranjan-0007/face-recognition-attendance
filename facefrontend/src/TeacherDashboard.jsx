@@ -31,6 +31,8 @@ const TeacherDashboard = () => {
     rollNumber: "", name: "", period: "", recognizedAt: ""
   });
   const [manualLoading, setManualLoading]     = useState(false);
+  const [showAllAttendanceLogs, setShowAllAttendanceLogs] = useState(false);
+  const [showAllStudentLogs, setShowAllStudentLogs] = useState(false);
 
   // All unique subjects from teacher's timetable + profile
   const [allMySubjects, setAllMySubjects]     = useState([]);
@@ -468,6 +470,8 @@ const TeacherDashboard = () => {
     !subjectFilter || log.period === subjectFilter
   );
   const visiblePresentCount = new Set(filteredSubjectTodayAttendance.map(l => l.rollNumber)).size;
+  const sortedAttendance = [...attendance].sort((a, b) => new Date(b.recognizedAt) - new Date(a.recognizedAt));
+  const displayedAttendance = showAllAttendanceLogs ? sortedAttendance : sortedAttendance.slice(0, 20);
 
   const pad = n => String(n).padStart(2, "0");
   const ic  = "w-full border-2 border-gray-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-600 bg-gray-50";
@@ -543,9 +547,16 @@ const TeacherDashboard = () => {
                 Load Detailed Stats
               </button>
             )}
-            <h3 className="font-bold text-gray-800 text-sm mb-2">Recent (last 8)</h3>
+            <div className="flex items-center justify-between mb-3 gap-3">
+              <h3 className="font-bold text-gray-800 text-sm">Recent {showAllStudentLogs ? "attendance" : "(last 8)"}</h3>
+              <button onClick={() => setShowAllStudentLogs(prev => !prev)}
+                className="text-xs px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">
+                {showAllStudentLogs ? "Show latest 8" : "Show all"}
+              </button>
+            </div>
             <div className="space-y-1.5">
-              {attendance.filter(l => l.rollNumber === selectedStudent.rollNumber).slice(0, 8).map((log, i) => (
+              {sortedAttendance.filter(l => l.rollNumber === selectedStudent.rollNumber)
+                .slice(0, showAllStudentLogs ? undefined : 8).map((log, i) => (
                 <div key={i} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
                   <span className="text-xs text-gray-700">{new Date(log.recognizedAt).toLocaleDateString("en-IN")}</span>
                   <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-medium">{log.period}</span>
@@ -923,9 +934,15 @@ const TeacherDashboard = () => {
               </div>
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-5">
-              <h2 className="font-bold text-gray-800 text-sm mb-4">Recent Logs</h2>
-              <div className="overflow-x-auto">
-                <table className="min-w-full table-auto border-separate border-spacing-y-1.5 text-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+              <h2 className="font-bold text-gray-800 text-sm">Recent Logs</h2>
+              <button onClick={() => setShowAllAttendanceLogs(prev => !prev)}
+                className="text-xs px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">
+                {showAllAttendanceLogs ? "Show latest 20" : "Show all records"}
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full table-auto border-separate border-spacing-y-1.5 text-sm">
                   <thead>
                     <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
                       <th className="text-left px-4 py-3 rounded-l-lg">Name</th>
@@ -935,7 +952,7 @@ const TeacherDashboard = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {attendance.slice(0, 20).map((log, i) => (
+                    {displayedAttendance.map((log, i) => (
                       <tr key={i} className="hover:bg-gray-50 transition cursor-pointer"
                         onClick={() => { const s = students.find(st => st.rollNumber === log.rollNumber); if (s) { setSelectedStudent(s); setStudentStats(null); } }}>
                         <td className="px-4 py-3 font-medium text-gray-800">{log.name}</td>

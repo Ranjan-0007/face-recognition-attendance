@@ -448,10 +448,16 @@ const StudentDashboard = () => {
             <p className="text-blue-300 text-xs">Guru Nanak Dev University College</p>
           </div>
         </div>
-        <button onClick={handleLogout}
-          className="px-3 py-1.5 text-xs bg-red-600/80 text-white rounded-lg hover:bg-red-700 transition font-medium">
-          Logout
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate("/")}
+            className="px-3 py-1.5 text-xs bg-white/10 text-white rounded-lg hover:bg-white/20 transition font-medium">
+            Go to Attendance Page
+          </button>
+          <button onClick={handleLogout}
+            className="px-3 py-1.5 text-xs bg-red-600/80 text-white rounded-lg hover:bg-red-700 transition font-medium">
+            Logout
+          </button>
+        </div>
       </div>
 
       {/* Tab Bar */}
