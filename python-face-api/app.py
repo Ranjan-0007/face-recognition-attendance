@@ -1,7 +1,7 @@
 """
-Combined Face Recognition API — Enrollment + Recognition
-Stores face images in MongoDB instead of the filesystem.
-Designed for deployment on Hugging Face Spaces (Docker SDK).
+Combined Face Recognition API — Enrollment + Recognition (Lightweight ONNX Version)
+Stores face images and 512-d embeddings in MongoDB.
+Uses ONNX Runtime (ArcFace model) instead of TensorFlow/DeepFace to run within 512MB RAM on Render.
 """
 
 from flask import Flask, request, jsonify
@@ -11,22 +11,21 @@ import numpy as np
 import os
 import base64
 import logging
+import requests
 from datetime import datetime, timezone
-from deepface import DeepFace
+import onnxruntime as ort
 from pymongo import MongoClient, ASCENDING
 from bson.binary import Binary
 
 # ── Config ───────────────────────────────────────────────────────────────────
-MODEL_NAME       = "ArcFace"
-DETECTOR_BACKEND = "opencv"
-DISTANCE_METRIC  = "cosine"
-THRESHOLD        = 0.40
+MODEL_PATH       = "arcface.onnx"
+MODEL_URL        = "https://huggingface.co/garavv/arcface-onnx/resolve/main/arc.onnx"
 MIN_FACE_PX      = 80
 BLUR_THRESHOLD   = 30.0
 BRIGHTNESS_MIN   = 40
 BRIGHTNESS_MAX   = 225
 MAX_IMAGES       = 8
-TARGET_SIZE      = (224, 224)
+THRESHOLD        = 0.40  # Cosine distance threshold (1 - cos_sim <= 0.40)
 # ─────────────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
@@ -35,22 +34,56 @@ log = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
+# ── Model Download & Loading ──────────────────────────────────────────────────
+def download_model_if_missing():
+    if not os.path.exists(MODEL_PATH):
+        log.info("ArcFace model '%s' not found. Downloading from Hugging Face...", MODEL_PATH)
+        try:
+            r = requests.get(MODEL_URL, stream=True)
+            r.raise_for_status()
+            total_size = int(r.headers.get('content-length', 0))
+            downloaded = 0
+            with open(MODEL_PATH, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            percent = int(100 * downloaded / total_size)
+                            if percent % 20 == 0:
+                                log.info("Downloading: %d%% completed", percent)
+            log.info("Model downloaded successfully ✓")
+        except Exception as e:
+            log.error("Failed to download model: %s", e)
+            if os.path.exists(MODEL_PATH):
+                os.remove(MODEL_PATH)
+            raise SystemExit("Required model file is missing and download failed.")
+
+download_model_if_missing()
+
+# Start ONNX Runtime Session (optimized for CPU execution)
+log.info("Initializing ONNX Runtime session...")
+opts = ort.SessionOptions()
+opts.intra_op_num_threads = 1
+opts.inter_op_num_threads = 1
+opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+ort_session = ort.InferenceSession(MODEL_PATH, sess_options=opts)
+log.info("ONNX ArcFace model loaded successfully ✓")
+
 # ── MongoDB ──────────────────────────────────────────────────────────────────
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
 mongo_client = MongoClient(MONGO_URI)
-# Use database name from URI; fall back to 'test' (matches Mongoose default)
 db = mongo_client.get_default_database(default="test")
 face_collection = db["faceimages"]
 
-# Ensure unique index on rollNumber (idempotent — safe to call every startup)
+# Ensure unique index on rollNumber
 face_collection.create_index([("rollNumber", ASCENDING)], unique=True)
 log.info("MongoDB connected → %s", db.name)
 
-# ── OpenCV cascade ───────────────────────────────────────────────────────────
+# ── OpenCV Cascade ───────────────────────────────────────────────────────────
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  HELPERS
@@ -98,44 +131,77 @@ def mongo_bytes_to_bgr(jpeg_bytes: bytes) -> np.ndarray:
     return cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
 
-def verify_against_student_mongo(face_img: np.ndarray, roll: str) -> float | None:
-    """
-    Run DeepFace.verify against all images for one student (loaded from MongoDB).
-    Returns the BEST (lowest) distance found, or None if all fail.
-    """
-    doc = face_collection.find_one({"rollNumber": roll}, {"images": 1})
-    if not doc or not doc.get("images"):
+def preprocess_face(face_bgr: np.ndarray, input_shape: list) -> np.ndarray:
+    """Resize, convert to RGB, normalize, and shape for the ArcFace ONNX model."""
+    # ArcFace models generally require 112x112 input
+    face_resized = cv2.resize(face_bgr, (112, 112))
+    
+    # BGR (OpenCV) -> RGB
+    face_rgb = cv2.cvtColor(face_resized, cv2.COLOR_BGR2RGB)
+    
+    # Normalize pixel values to [-1, 1]: (pixel - 127.5) / 128.0
+    face_norm = (face_rgb.astype(np.float32) - 127.5) / 128.0
+    
+    # Handle channel-first or channel-last shapes
+    if input_shape[1] == 3:  # e.g., [1, 3, 112, 112]
+        face_input = np.transpose(face_norm, (2, 0, 1))
+    else:                    # e.g., [1, 112, 112, 3]
+        face_input = face_norm
+        
+    return np.expand_dims(face_input, axis=0)
+
+
+def extract_embedding(face_bgr: np.ndarray) -> list[float]:
+    """Runs ArcFace model inference and returns the normalized 512-d float list."""
+    inputs = ort_session.get_inputs()[0]
+    input_shape = inputs.shape
+    
+    # Fallback to standard ArcFace shape if dynamic
+    if not input_shape or None in input_shape or isinstance(input_shape[2], str):
+        input_shape = [1, 3, 112, 112]
+        
+    face_input = preprocess_face(face_bgr, input_shape)
+    
+    input_name = inputs.name
+    output_name = ort_session.get_outputs()[0].name
+    
+    embeddings = ort_session.run([output_name], {input_name: face_input})[0]
+    embedding = embeddings[0]
+    
+    # L2 normalize the embedding
+    norm = np.linalg.norm(embedding)
+    if norm > 0:
+        embedding = embedding / norm
+        
+    return embedding.tolist()
+
+
+def get_or_create_embedding(roll_number: str, img_doc: dict) -> list[float] | None:
+    """Gets stored embedding from image document or computes and saves it if missing."""
+    emb = img_doc.get("embedding")
+    if emb is not None:
+        return list(emb)
+        
+    # If missing (legacy data), compute and backport it
+    ref_img = mongo_bytes_to_bgr(img_doc["data"])
+    if ref_img is None:
+        return None
+        
+    try:
+        log.info("Computing missing embedding for legacy image: %s/%s", roll_number, img_doc["filename"])
+        emb = extract_embedding(ref_img)
+        # Update MongoDB doc so we don't have to compute it again next time
+        face_collection.update_one(
+            {"rollNumber": roll_number, "images.filename": img_doc["filename"]},
+            {"$set": {"images.$.embedding": emb}}
+        )
+        return emb
+    except Exception as e:
+        log.error("Failed to compute legacy embedding: %s", e)
         return None
 
-    best_distance = None
 
-    for img_doc in doc["images"]:
-        try:
-            ref_img = mongo_bytes_to_bgr(img_doc["data"])
-            if ref_img is None:
-                continue
-            result = DeepFace.verify(
-                img1_path        = face_img,       # numpy array
-                img2_path        = ref_img,        # numpy array
-                model_name       = MODEL_NAME,
-                detector_backend = DETECTOR_BACKEND,
-                distance_metric  = DISTANCE_METRIC,
-                enforce_detection= False,          # face already cropped
-            )
-            dist = result["distance"]
-            log.info("  %s/%s → %.4f", roll, img_doc.get("filename", "?"), dist)
-            if best_distance is None or dist < best_distance:
-                best_distance = dist
-        except Exception as e:
-            log.warning("  Skipping %s/%s: %s",
-                        roll, img_doc.get("filename", "?"), e)
-
-    return best_distance
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  ROUTES — ENROLLMENT
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Enrollment Routes ──────────────────────────────────────────────
 
 @app.route("/enroll", methods=["POST"])
 def enroll_person():
@@ -146,14 +212,14 @@ def enroll_person():
     if not roll_number or not image_data:
         return jsonify({"message": "rollNumber and image are required"}), 400
 
-    # ── Decode ────────────────────────────────────────────────────────────
+    # Decode
     frame = decode_image(image_data)
     if frame is None:
         return jsonify({"message": "Could not decode image"}), 400
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # ── Detect faces ──────────────────────────────────────────────────────
+    # Detect faces
     detected = face_cascade.detectMultiScale(
         gray, scaleFactor=1.1, minNeighbors=6,
         minSize=(MIN_FACE_PX, MIN_FACE_PX), flags=cv2.CASCADE_SCALE_IMAGE,
@@ -164,7 +230,7 @@ def enroll_person():
     if len(detected) > 1:
         return jsonify({"message": f"{len(detected)} faces found. Only one person should be in frame."}), 400
 
-    # ── Cap check ─────────────────────────────────────────────────────────
+    # Check capacity limit
     current = mongo_image_count(roll_number)
     if current >= MAX_IMAGES:
         return jsonify({
@@ -173,39 +239,45 @@ def enroll_person():
             "maxImages": MAX_IMAGES,
         }), 400
 
-    # ── Crop with 20 % padding — same logic as enroll.py ─────────────────
+    # Crop largest face with 20% padding
     x, y, w, h = max(detected, key=lambda f: f[2] * f[3])
     pad = int(max(w, h) * 0.20)
-    x1  = max(0, x - pad);            y1 = max(0, y - pad)
-    x2  = min(frame.shape[1], x+w+pad); y2 = min(frame.shape[0], y+h+pad)
+    x1  = max(0, x - pad);              y1 = max(0, y - pad)
+    x2  = min(frame.shape[1], x + w + pad); y2 = min(frame.shape[0], y + h + pad)
 
     face_colour = frame[y1:y2, x1:x2]
     face_gray   = gray[y1:y2,  x1:x2]
 
-    # ── Quality gate ─────────────────────────────────────────────────────
+    # Quality check
     passed, reason = quality_check(face_gray)
     if not passed:
         return jsonify({"message": reason}), 400
 
-    # ── Encode face as JPEG bytes and store in MongoDB ────────────────────
-    face_colour = cv2.resize(face_colour, TARGET_SIZE)
-    idx         = current + 1
-    filename    = f"{roll_number}_{idx}.jpg"
-
-    success, buf = cv2.imencode(".jpg", face_colour,
-                                [cv2.IMWRITE_JPEG_QUALITY, 95])
+    # Resize to 224x224 for storage and encode as JPEG bytes
+    face_store = cv2.resize(face_colour, (224, 224))
+    success, buf = cv2.imencode(".jpg", face_store, [cv2.IMWRITE_JPEG_QUALITY, 95])
     if not success:
         return jsonify({"message": "Failed to encode face image"}), 500
 
+    # Compute embedding
+    try:
+        embedding = extract_embedding(face_colour)
+    except Exception as e:
+        log.error("Embedding extraction failed: %s", e)
+        return jsonify({"message": "Failed to extract face embedding vectors"}), 500
+
+    idx = current + 1
+    filename = f"{roll_number}_{idx}.jpg"
     jpeg_bytes = Binary(buf.tobytes())
 
     image_doc = {
         "filename"  : filename,
         "data"      : jpeg_bytes,
+        "embedding" : embedding,
         "uploadedAt": datetime.now(timezone.utc),
     }
 
-    # Upsert: create doc if first image, push otherwise
+    # Save to MongoDB
     face_collection.update_one(
         {"rollNumber": roll_number},
         {"$push": {"images": image_doc},
@@ -214,7 +286,7 @@ def enroll_person():
     )
 
     new_count = mongo_image_count(roll_number)
-    log.info("Enrolled %s — image %d/%d (MongoDB)", roll_number, new_count, MAX_IMAGES)
+    log.info("Enrolled %s — image %d/%d (MongoDB + Embedding)", roll_number, new_count, MAX_IMAGES)
 
     return jsonify({
         "message"   : f"Image {new_count}/{MAX_IMAGES} captured!",
@@ -245,9 +317,7 @@ def delete_enrollment(roll_number):
     return jsonify({"message": f"Face data for {roll_number} deleted"}), 200
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  ROUTES — RECOGNITION
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Recognition Routes ─────────────────────────────────────────────
 
 @app.route("/recognize", methods=["POST"])
 def recognize():
@@ -259,7 +329,7 @@ def recognize():
     if frame is None:
         return jsonify({"error": "Could not decode image"}), 400
 
-    # ── 1. Quick face presence check with OpenCV ──────────────────────────
+    # Face presence check
     gray     = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     detected = face_cascade.detectMultiScale(
         gray, scaleFactor=1.1, minNeighbors=5,
@@ -267,35 +337,47 @@ def recognize():
     )
 
     if len(detected) == 0:
-        return jsonify({"rollNumber": "No face detected", "confidence": None,
-                        "matched": False})
+        return jsonify({"rollNumber": "No face detected", "confidence": None, "matched": False})
 
-    # ── 2. Crop largest face with 20 % padding ────────────────────────────
+    # Crop largest face with 20% padding
     x, y, w, h = max(detected, key=lambda f: f[2] * f[3])
     pad = int(max(w, h) * 0.20)
     x1  = max(0, x - pad);              y1 = max(0, y - pad)
-    x2  = min(frame.shape[1], x+w+pad); y2 = min(frame.shape[0], y+h+pad)
-    face_crop = frame[y1:y2, x1:x2]     # colour — ArcFace needs BGR
+    x2  = min(frame.shape[1], x + w + pad); y2 = min(frame.shape[0], y + h + pad)
+    face_crop = frame[y1:y2, x1:x2]
 
-    # ── 3. Check enrolled students (from MongoDB) ─────────────────────────
-    enrolled_rolls = face_collection.distinct("rollNumber")
-    if not enrolled_rolls:
-        return jsonify({"error": "No students enrolled yet."}), 500
+    # Get query embedding vector
+    try:
+        query_embedding = extract_embedding(face_crop)
+    except Exception as e:
+        log.error("Failed to extract query embedding: %s", e)
+        return jsonify({"error": "Failed to analyze face features"}), 500
 
-    # ── 4. Compare against every student, keep best match ─────────────────
+    # Fetch all enrolled students
+    cursor = face_collection.find({}, {"rollNumber": 1, "images": 1})
     best_roll     = None
     best_distance = float("inf")
 
-    for roll in enrolled_rolls:
-        dist = verify_against_student_mongo(face_crop, roll)
-        if dist is not None and dist < best_distance:
-            best_distance = dist
-            best_roll     = roll
+    for student_doc in cursor:
+        roll = student_doc["rollNumber"]
+        images = student_doc.get("images") or []
+        
+        for img_doc in images:
+            ref_emb = get_or_create_embedding(roll, img_doc)
+            if ref_emb is None:
+                continue
+                
+            # Cosine similarity dot product
+            cos_sim = np.dot(query_embedding, ref_emb)
+            # Distance: 1.0 - cos_sim (smaller is better, matching DeepFace style)
+            distance = 1.0 - cos_sim
+            
+            if distance < best_distance:
+                best_distance = distance
+                best_roll     = roll
 
-    log.info("Best match → %s  distance=%.4f  threshold=%.2f",
-             best_roll, best_distance, THRESHOLD)
+    log.info("Best match → %s  distance=%.4f  threshold=%.2f", best_roll, best_distance, THRESHOLD)
 
-    # ── 5. Apply threshold ────────────────────────────────────────────────
     matched    = best_distance <= THRESHOLD
     confidence = max(0, int((1.0 - best_distance) * 100))
 
@@ -315,49 +397,31 @@ def recognize():
     })
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  HEALTH
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Health Check ───────────────────────────────────────────────────
 
 @app.route("/health", methods=["GET"])
 def health():
-    pipeline = [
-        {"$project": {"rollNumber": 1, "imageCount": {"$size": {"$ifNull": ["$images", []]}}}},
-        {"$group": {"_id": None,
-                    "enrolled_students": {"$sum": 1},
-                    "total_images": {"$sum": "$imageCount"}}},
-    ]
-    stats = list(face_collection.aggregate(pipeline))
-    if stats:
-        enrolled = stats[0]["enrolled_students"]
-        total    = stats[0]["total_images"]
-    else:
-        enrolled = total = 0
+    try:
+        enrolled = face_collection.count_documents({})
+        pipeline = [{"$unwind": "$images"}, {"$count": "total"}]
+        result = list(face_collection.aggregate(pipeline))
+        total_images = result[0]["total"] if result else 0
+    except Exception:
+        enrolled = 0
+        total_images = 0
 
     return jsonify({
-        "status"           : "ok",
-        "model"            : MODEL_NAME,
-        "detector"         : DETECTOR_BACKEND,
-        "threshold"        : THRESHOLD,
+        "status":            "ok",
+        "model":             "ArcFace ONNX (Lightweight CPU)",
+        "detector":          "opencv",
+        "threshold":         THRESHOLD,
         "enrolled_students": enrolled,
-        "total_images"     : total,
+        "total_images":      total_images,
     })
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  STARTUP
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── Startup ────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Warm up DeepFace so the first request isn't slow
-    log.info("Warming up DeepFace %s model…", MODEL_NAME)
-    try:
-        dummy = np.zeros((224, 224, 3), dtype=np.uint8)
-        DeepFace.represent(dummy, model_name=MODEL_NAME,
-                           detector_backend="skip", enforce_detection=False)
-        log.info("DeepFace ready ✓")
-    except Exception as e:
-        log.warning("Warm-up failed (ok on first run): %s", e)
-
-    PORT = int(os.environ.get("PORT", 7860))
+    PORT = int(os.environ.get("PORT", 5002))
     app.run(host="0.0.0.0", port=PORT, debug=False)
