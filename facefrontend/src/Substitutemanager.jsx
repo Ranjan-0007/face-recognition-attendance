@@ -1,6 +1,7 @@
 import "./App.css";
 import React, { useState, useEffect } from "react";
 import { FaTrash, FaUserTie, FaExclamationTriangle, FaCheckCircle, FaTimes } from "react-icons/fa";
+import { API_BASE } from './config/api';
 
 const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
@@ -24,7 +25,7 @@ const SubstituteManager = ({ dept, hodUsername, teachers, periods, timetable, on
 
   const fetchSubstitutes = async () => {
     try {
-      const res  = await fetch(`http://localhost:5001/api/substitutes?date=${selectedDate}&department=${encodeURIComponent(dept)}`);
+      const res  = await fetch(`${API_BASE}/api/substitutes?date=${selectedDate}&department=${encodeURIComponent(dept)}`);
       const data = await res.json();
       setSubstitutes(Array.isArray(data) ? data : []);
     } catch { console.error("Failed to fetch substitutes"); }
@@ -57,7 +58,7 @@ const SubstituteManager = ({ dept, hodUsername, teachers, periods, timetable, on
 
     setLoading(true);
     try {
-      const res  = await fetch("http://localhost:5001/api/substitutes", {
+      const res  = await fetch(`${API_BASE}/api/substitutes`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date:              selectedDate,
@@ -83,7 +84,7 @@ const SubstituteManager = ({ dept, hodUsername, teachers, periods, timetable, on
 
   const handleRemove = async (id) => {
     try {
-      const res  = await fetch(`http://localhost:5001/api/substitutes/${id}`, { method: "DELETE" });
+      const res  = await fetch(`${API_BASE}/api/substitutes/${id}`, { method: "DELETE" });
       const data = await res.json();
       if (res.ok) { showToast(data.message, "success"); fetchSubstitutes(); }
       else showToast(data.message, "error");

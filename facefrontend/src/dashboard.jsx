@@ -8,6 +8,7 @@ import axios from "axios";
 import React, { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import { DEPARTMENTS, CLASSES_BY_DEPARTMENT } from "./courses";
+import { API_BASE } from './config/api';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend
@@ -49,11 +50,11 @@ const Dashboard = () => {
   const fetchAll = async () => {
     try {
       const [logsRes, studRes, hodRes, teachRes, perRes] = await Promise.all([
-        axios.get("http://localhost:5001/api/periodwise-attendance"),
-        axios.get("http://localhost:5001/api/students"),
-        fetch("http://localhost:5001/api/admin/hods"),
-        fetch("http://localhost:5001/api/admin/teachers"),
-        fetch("http://localhost:5001/api/periods"),
+        axios.get(`${API_BASE}/api/periodwise-attendance`),
+        axios.get(`${API_BASE}/api/students`),
+        fetch(`${API_BASE}/api/admin/hods`),
+        fetch(`${API_BASE}/api/admin/teachers`),
+        fetch(`${API_BASE}/api/periods`),
       ]);
       setPeriodLogs(Array.isArray(logsRes.data) ? logsRes.data : []);
       setStudents(Array.isArray(studRes.data)   ? studRes.data : []);
@@ -74,7 +75,7 @@ const Dashboard = () => {
     setLoadingTT(true);
     try {
       const res  = await fetch(
-        `http://localhost:5001/api/timetable/${encodeURIComponent(viewClass)}`
+        `${API_BASE}/api/timetable/${encodeURIComponent(viewClass)}`
       );
       const data = await res.json();
       setViewTimetable(data?.slots || null);
@@ -92,7 +93,7 @@ const Dashboard = () => {
       return showToast("All fields required.");
     }
     try {
-      const res  = await fetch("http://localhost:5001/api/admin/hods", {
+      const res  = await fetch(`${API_BASE}/api/admin/hods`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(hodForm),
@@ -111,7 +112,7 @@ const Dashboard = () => {
   const handleDeleteHOD = async (id, name) => {
     if (!window.confirm(`Delete HOD ${name}?`)) return;
     try {
-      const res  = await fetch(`http://localhost:5001/api/admin/hods/${id}`, {
+      const res  = await fetch(`${API_BASE}/api/admin/hods/${id}`, {
         method: "DELETE"
       });
       const data = await res.json();

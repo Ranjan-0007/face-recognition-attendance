@@ -5,6 +5,7 @@ import { FaCamera, FaCheckCircle, FaUserPlus } from "react-icons/fa";
 import {
   DEPARTMENTS, COURSES_BY_DEPARTMENT, getSemesters
 } from "./courses";
+import { API_BASE, PYTHON_API_BASE } from './config/api';
 
 /* ─── className auto-builder ───────────────────────────────────────
    BCA + Semester 3  →  "BCA Sem 3"
@@ -78,7 +79,7 @@ const Addstudent = () => {
     if (!student.rollNumber.trim()) return;
     setCheckingRoll(true);
     try {
-      const res  = await fetch(`http://localhost:5001/api/students`);
+      const res  = await fetch(`${API_BASE}/api/students`);
       const data = await res.json();
       if (Array.isArray(data)) {
         const exists = data.some(s => s.rollNumber === student.rollNumber.trim());
@@ -115,7 +116,7 @@ const Addstudent = () => {
     setIsEnrolling(true);
     try {
       // Save profile (server also checks for duplicate rollNumber)
-      const profileRes = await fetch("http://localhost:5001/api/students", {
+      const profileRes = await fetch(`${API_BASE}/api/students`, {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
         body:JSON.stringify({ ...student, className:derivedClassName }),
@@ -132,7 +133,7 @@ const Addstudent = () => {
       }
 
       // Create login account
-      const accRes = await fetch("http://localhost:5001/api/admin/create-student-account", {
+      const accRes = await fetch(`${API_BASE}/api/admin/create-student-account`, {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
         body:JSON.stringify({ rollNumber:student.rollNumber, password:student.password }),
@@ -140,7 +141,7 @@ const Addstudent = () => {
       const accData = await accRes.json();
       if (!accRes.ok) {
         // Rollback the student profile since account creation failed
-        await fetch("http://localhost:5001/api/student/rollback", {
+        await fetch(`${API_BASE}/api/student/rollback`, {
           method:"POST",
           headers:{ "Content-Type":"application/json" },
           body:JSON.stringify({ rollNumber:student.rollNumber }),
@@ -169,7 +170,7 @@ const Addstudent = () => {
     const imageData = canvas.toDataURL("image/jpeg");
 
     try {
-      const res = await fetch("http://localhost:5002/enroll", {
+      const res = await fetch(`${PYTHON_API_BASE}/enroll`, {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
         body:JSON.stringify({ rollNumber:student.rollNumber, image:imageData }),

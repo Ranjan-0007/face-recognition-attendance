@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { DEPARTMENTS, COURSES_BY_DEPARTMENT, getSemesters } from "./courses";
 import { FaCamera, FaCheckCircle, FaExclamationTriangle } from "react-icons/fa";
+import { API_BASE, PYTHON_API_BASE } from './config/api';
 
 function buildClassName(course, semester) {
   if (!course || !semester) return "";
@@ -61,7 +62,7 @@ const StudentRegister = () => {
 
   const rollbackRegistration = async (rollNumber, email) => {
     try {
-      await fetch("http://localhost:5001/api/student/rollback", {
+      await fetch(`${API_BASE}/api/student/rollback`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rollNumber, email }),
       });
@@ -107,7 +108,7 @@ const StudentRegister = () => {
     const currentRoll = form.rollNumber.trim();
     const currentEmail = form.email.trim().toLowerCase();
     try {
-      const authRes = await fetch("http://localhost:5001/api/student/register", {
+      const authRes = await fetch(`${API_BASE}/api/student/register`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: form.name.trim(), email: currentEmail, password: form.password, rollNumber: currentRoll }),
       });
@@ -115,7 +116,7 @@ const StudentRegister = () => {
       if (!authRes.ok) { showToast(authData.message || "Registration failed.", "error"); setLoading(false); return; }
       authCreated = true;
 
-      const profileRes = await fetch("http://localhost:5001/api/students", {
+      const profileRes = await fetch(`${API_BASE}/api/students`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: form.name.trim(), rollNumber: currentRoll, age: form.age.trim(),
@@ -150,7 +151,7 @@ const StudentRegister = () => {
     canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = canvas.toDataURL("image/jpeg");
     try {
-      const response = await fetch("http://localhost:5002/enroll", {
+      const response = await fetch(`${PYTHON_API_BASE}/enroll`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rollNumber: registeredRollNumber, image: imageData }),
       });
@@ -173,7 +174,7 @@ const StudentRegister = () => {
     if (Object.keys(e).length > 0) { setErrors(e); return; }
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:5001/api/student/login", {
+      const res = await fetch(`${API_BASE}/api/student/login`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: form.email.trim().toLowerCase(), password: form.password }),
       });

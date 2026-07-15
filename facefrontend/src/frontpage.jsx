@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
+import { API_BASE, PYTHON_RECOGNIZE_BASE } from './config/api';
 
 const Front = () => {
   const [recognizedRoll, setRecognizedRoll] = useState("");
@@ -18,8 +19,8 @@ const Front = () => {
     const fetchData = async () => {
       try {
         const [studRes, perRes] = await Promise.all([
-          axios.get("http://localhost:5001/api/students"),
-          axios.get("http://localhost:5001/api/periods"),
+          axios.get(`${API_BASE}/api/students`),
+          axios.get(`${API_BASE}/api/periods`),
         ]);
         setStudents(Array.isArray(studRes.data) ? studRes.data : []);
         setPeriods(Array.isArray(perRes.data)   ? perRes.data  : []);
@@ -87,7 +88,7 @@ const Front = () => {
     try {
       // Step 1 — Face recognition
       const response = await axios.post(
-        "http://localhost:5003/recognize",
+        `${PYTHON_RECOGNIZE_BASE}/recognize`,
         { image: imageData },
         { timeout: 15000 }
       );
@@ -113,7 +114,7 @@ const Front = () => {
       // Step 2 — Mark attendance (server checks timetable + 15-min window)
       try {
         const attRes = await axios.post(
-          "http://localhost:5001/api/periodwise-attendance",
+          `${API_BASE}/api/periodwise-attendance`,
           { rollNumber, recognizedAt: new Date().toISOString() }
         );
         setStatus("success");

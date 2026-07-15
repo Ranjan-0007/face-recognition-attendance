@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import { API_BASE } from './config/api';
 
 const Signin = () => {
   const [authMode, setAuthMode] = useState("login");
@@ -11,7 +12,7 @@ const Signin = () => {
     const retype   = document.querySelector("#signup-retype").value;
     if (password !== retype) { alert("Passwords do not match!"); return; }
     try {
-      const response = await fetch("http://localhost:5001/signup", {
+      const response = await fetch(`${API_BASE}/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, email, password }),
@@ -26,7 +27,7 @@ const Signin = () => {
     const email    = document.querySelector("#signin-email").value;
     const password = document.querySelector("#signin-password").value;
     try {
-      const response = await fetch("http://localhost:5001/signin", {
+      const response = await fetch(`${API_BASE}/signin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),

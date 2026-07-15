@@ -2,6 +2,7 @@ import "./App.css";
 import React, { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import { FaTrash, FaCalendarAlt, FaPlus, FaGlobe, FaStar, FaUniversity } from "react-icons/fa";
+import { API_BASE } from './config/api';
 
 const HOLIDAY_TYPES = [
   { value: "national",  label: "National Holiday",  color: "bg-orange-100 text-orange-700",   icon: "🇮🇳" },
@@ -42,7 +43,7 @@ const HolidayManager = () => {
 
   const fetchHolidays = async () => {
     try {
-      let url = `http://localhost:5001/api/holidays?year=${filterYear}`;
+      let url = `${API_BASE}/api/holidays?year=${filterYear}`;
       if (filterMonth) url += `&month=${filterMonth}`;
       const res  = await fetch(url);
       const data = await res.json();
@@ -58,7 +59,7 @@ const HolidayManager = () => {
     }
     setLoading(true);
     try {
-      const res  = await fetch("http://localhost:5001/api/holidays", {
+      const res  = await fetch(`${API_BASE}/api/holidays`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, createdBy: "admin" }),
       });
@@ -75,7 +76,7 @@ const HolidayManager = () => {
   const handleDelete = async (id, name) => {
     if (!window.confirm(`Remove holiday: ${name}?`)) return;
     try {
-      const res  = await fetch(`http://localhost:5001/api/holidays/${id}`, { method: "DELETE" });
+      const res  = await fetch(`${API_BASE}/api/holidays/${id}`, { method: "DELETE" });
       const data = await res.json();
       if (res.ok) { showToast(data.message, "success"); fetchHolidays(); }
       else showToast(data.message, "error");

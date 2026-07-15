@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import { FaTrash, FaSearch, FaKey, FaUserPlus } from "react-icons/fa";
 import { Link } from "react-router-dom";
+import { API_BASE } from './config/api';
 
 const Enrolled = () => {
   const [students, setStudents]                     = useState([]);
@@ -26,8 +27,8 @@ const Enrolled = () => {
   const fetchAll = async () => {
     try {
       const [studentsRes, periodRes] = await Promise.all([
-        axios.get("http://localhost:5001/api/students"),
-        axios.get("http://localhost:5001/api/periodwise-attendance"),
+        axios.get(`${API_BASE}/api/students`),
+        axios.get(`${API_BASE}/api/periodwise-attendance`),
       ]);
       setStudents(
         Array.isArray(studentsRes.data) ? studentsRes.data : []
@@ -81,7 +82,7 @@ const Enrolled = () => {
   const handleDelete = async (rollNumber) => {
     try {
       const res = await fetch(
-        `http://localhost:5001/api/students/${encodeURIComponent(rollNumber)}`,
+        `${API_BASE}/api/students/${encodeURIComponent(rollNumber)}`,
         { method: "DELETE" }
       );
       const data = await res.json();
@@ -109,7 +110,7 @@ const Enrolled = () => {
     setLoading(true);
     try {
       const res = await fetch(
-        "http://localhost:5001/api/admin/set-student-password",
+        `${API_BASE}/api/admin/set-student-password`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -127,7 +128,7 @@ const Enrolled = () => {
         setConfirmNewPassword("");
       } else if (res.status === 404) {
         const createRes = await fetch(
-          "http://localhost:5001/api/admin/create-student-account",
+          `${API_BASE}/api/admin/create-student-account`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
