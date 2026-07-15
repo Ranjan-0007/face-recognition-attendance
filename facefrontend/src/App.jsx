@@ -15,7 +15,7 @@ import HODLogin         from './HODLogin';
 import HODDashboard     from './HODDashboard';
 import TeacherLogin     from './TeacherLogin';
 import TeacherDashboard from './TeacherDashboard';
-import HolidayManager   from './Holidaymanager';
+import HolidayManager   from './HolidayManager';
 import CourseManager    from './CourseManager';
 import { AdminRoute, StudentRoute } from './ProtectedRoute';
 
