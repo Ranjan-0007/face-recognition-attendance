@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import "./CourseManager.css";
+import { API_BASE } from './config/api';
 
 const CourseManager = () => {
   const [departments, setDepartments] = useState([]);
@@ -29,7 +30,7 @@ const CourseManager = () => {
     "Engineering",
   ];
 
-  const API_URL = "http://localhost:5001/api/admin";
+  const API_URL = `${API_BASE}/api/admin`;
 
   useEffect(() => {
     setDepartments(DEPARTMENTS);

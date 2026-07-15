@@ -8,6 +8,7 @@ import {
   FaChalkboardTeacher, FaExchangeAlt
 } from "react-icons/fa";
 import SubstituteManager from "./Substitutemanager";
+import { API_BASE, PYTHON_API_BASE } from './config/api';
 import {
   COURSES_BY_DEPARTMENT, getSemesters,
   DEFAULT_SUBJECTS_BY_DEPARTMENT,
@@ -78,12 +79,12 @@ const HODDashboard = () => {
   const fetchAll = async () => {
     try {
       const [teachRes, studRes, attRes, subjRes, perRes, ttRes] = await Promise.all([
-        fetch(`http://localhost:5001/api/hod/teachers?department=${encodeURIComponent(dept)}`),
-        fetch(`http://localhost:5001/api/students?department=${encodeURIComponent(dept)}`),
-        fetch(`http://localhost:5001/api/periodwise-attendance?department=${encodeURIComponent(dept)}`),
-        fetch(`http://localhost:5001/api/dept-subjects/${encodeURIComponent(dept)}`),
-        fetch(`http://localhost:5001/api/periods`),
-        fetch(`http://localhost:5001/api/timetables?department=${encodeURIComponent(dept)}`),
+        fetch(`${API_BASE}/api/hod/teachers?department=${encodeURIComponent(dept)}`),
+        fetch(`${API_BASE}/api/students?department=${encodeURIComponent(dept)}`),
+        fetch(`${API_BASE}/api/periodwise-attendance?department=${encodeURIComponent(dept)}`),
+        fetch(`${API_BASE}/api/dept-subjects/${encodeURIComponent(dept)}`),
+        fetch(`${API_BASE}/api/periods`),
+        fetch(`${API_BASE}/api/timetables?department=${encodeURIComponent(dept)}`),
       ]);
       const [teachData, studData, attData, subjData, perData, ttData] = await Promise.all([
         teachRes.json(), studRes.json(), attRes.json(), subjRes.json(), perRes.json(), ttRes.json()
@@ -131,12 +132,12 @@ const HODDashboard = () => {
     try {
       const ttData = {};
       for (const cls of deptClasses) {
-        const res = await fetch(`http://localhost:5001/api/timetable/${encodeURIComponent(cls)}`);
+        const res = await fetch(`${API_BASE}/api/timetable/${encodeURIComponent(cls)}`);
         const data = await res.json();
         if (data?.slots) ttData[cls] = data.slots;
       }
       setAllDeptTimetables(ttData);
-    } catch { console.error("Failed to fetch department timetables"); }
+    } catch { console.error(`Failed to fetch department timetables`); }
   };
 
   useEffect(() => { if (deptClasses.length) fetchAllDeptTimetables(); }, [deptClasses]);
@@ -146,7 +147,7 @@ const HODDashboard = () => {
     if (!selectedClass || !periods.length) return;
     const fetchTT = async () => {
       try {
-        const res  = await fetch(`http://localhost:5001/api/timetable/${encodeURIComponent(selectedClass)}`);
+        const res  = await fetch(`${API_BASE}/api/timetable/${encodeURIComponent(selectedClass)}`);
         const data = await res.json();
         if (data?.slots && Object.keys(data.slots).length > 0) {
           // Ensure every day has the right number of slots
@@ -191,7 +192,7 @@ const HODDashboard = () => {
 
   const fetchStudentStats = async (rollNumber) => {
     try {
-      const res  = await fetch(`http://localhost:5001/api/student/attendance-stats/${rollNumber}`);
+      const res  = await fetch(`${API_BASE}/api/student/attendance-stats/${rollNumber}`);
       const data = await res.json();
       setStudentStats(data);
     } catch { setStudentStats(null); }
@@ -206,7 +207,7 @@ const HODDashboard = () => {
     if (field === "teacher" && value.trim()) {
       setClashWarning("");
       try {
-        const res = await fetch("http://localhost:5001/api/timetable/check-clash", {
+        const res = await fetch(`${API_BASE}/api/timetable/check-clash`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ teacherName: value, day, slotIndex, excludeClassName: selectedClass }),
@@ -239,7 +240,7 @@ const HODDashboard = () => {
     if (!periods.length)  return showToast("Admin must configure period time-slots first", "error");
     setSavingTT(true);
     try {
-      const res = await fetch("http://localhost:5001/api/timetable", {
+      const res = await fetch(`${API_BASE}/api/timetable`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ className: selectedClass, department: dept, slots: currentTimetable, createdByHOD: hodInfo.username }),
@@ -256,7 +257,7 @@ const HODDashboard = () => {
     if (!newSubject.trim()) return;
     const updated = [...new Set([...deptSubjects, newSubject.trim()])];
     try {
-      await fetch("http://localhost:5001/api/dept-subjects", {
+      await fetch(`${API_BASE}/api/dept-subjects`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ department: dept, subjects: updated }),
       });
@@ -266,7 +267,7 @@ const HODDashboard = () => {
 
   const handleRemoveSubject = async (subject) => {
     const updated = deptSubjects.filter(s => s !== subject);
-    await fetch("http://localhost:5001/api/dept-subjects", {
+    await fetch(`${API_BASE}/api/dept-subjects`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ department: dept, subjects: updated }),
     });
@@ -278,7 +279,7 @@ const HODDashboard = () => {
     const { name, username, email, password } = teacherForm;
     if (!name || !username || !email || !password) { showToast("All fields required", "error"); return; }
     try {
-      const res  = await fetch("http://localhost:5001/api/hod/create-teacher", {
+      const res  = await fetch(`${API_BASE}/api/hod/create-teacher`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, username, email, password, department: dept, createdBy: hodInfo.username }),
       });
@@ -294,7 +295,7 @@ const HODDashboard = () => {
   const handleUpdateTeacher = async () => {
     if (!editTeacher) return;
     try {
-      const res  = await fetch(`http://localhost:5001/api/hod/teachers/${editTeacher._id}`, {
+      const res  = await fetch(`${API_BASE}/api/hod/teachers/${editTeacher._id}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: editTeacher.name }),
       });
@@ -308,7 +309,7 @@ const HODDashboard = () => {
   const handleDeleteStudent = async (rollNumber, name) => {
     if (!window.confirm(`Delete student ${name}? This cannot be undone.`)) return;
     try {
-      const res  = await fetch(`http://localhost:5001/api/students/${encodeURIComponent(rollNumber)}`, { method: "DELETE" });
+      const res  = await fetch(`${API_BASE}/api/students/${encodeURIComponent(rollNumber)}`, { method: "DELETE" });
       const data = await res.json();
       if (res.ok) {
         showToast(data.message, "success");
@@ -321,7 +322,7 @@ const HODDashboard = () => {
   // ── Delete Today's Attendance ─────────────────────────────────
   const handleDeleteTodayAttendance = async (rollNumber) => {
     try {
-      const res  = await fetch(`http://localhost:5001/api/attendance/student/${encodeURIComponent(rollNumber)}/today`, { method: "DELETE" });
+      const res  = await fetch(`${API_BASE}/api/attendance/student/${encodeURIComponent(rollNumber)}/today`, { method: "DELETE" });
       const data = await res.json();
       if (res.ok) {
         showToast(data.message, "success");
@@ -353,7 +354,7 @@ const HODDashboard = () => {
     if (addStudentErrors.rollNumber) { showToast("Fix errors before saving", "error"); return; }
     setAddStudentLoading(true);
     try {
-      const profileRes = await fetch("http://localhost:5001/api/students", {
+      const profileRes = await fetch(`${API_BASE}/api/students`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...addStudentForm, department: dept, className: derivedClassName }),
       });
@@ -364,7 +365,7 @@ const HODDashboard = () => {
           setAddStudentErrors(prev => ({ ...prev, rollNumber: profileData.message }));
         setAddStudentLoading(false); return;
       }
-      const accRes = await fetch("http://localhost:5001/api/admin/create-student-account", {
+      const accRes = await fetch(`${API_BASE}/api/admin/create-student-account`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rollNumber: addStudentForm.rollNumber, password: addStudentForm.password }),
       });
@@ -374,7 +375,7 @@ const HODDashboard = () => {
         setAddStudentStep("face");
       } else {
         // Rollback student profile
-        await fetch("http://localhost:5001/api/student/rollback", {
+        await fetch(`${API_BASE}/api/student/rollback`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ rollNumber: addStudentForm.rollNumber }),
         });
@@ -391,7 +392,7 @@ const HODDashboard = () => {
     canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = canvas.toDataURL("image/jpeg");
     try {
-      const res = await fetch("http://localhost:5002/enroll", {
+      const res = await fetch(`${PYTHON_API_BASE}/enroll`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rollNumber: addStudentForm.rollNumber, image: imageData }),
       });
@@ -911,7 +912,7 @@ const HODDashboard = () => {
                           className="p-2 rounded-lg text-blue-500 hover:bg-blue-50"><FaEdit size={13} /></button>
                         <button onClick={async () => {
                           if (!window.confirm(`Delete teacher ${t.name}?`)) return;
-                          await fetch(`http://localhost:5001/api/hod/teachers/${t._id}`, { method: "DELETE" });
+                          await fetch(`${API_BASE}/api/hod/teachers/${t._id}`, { method: "DELETE" });
                           showToast("Teacher deleted", "success"); fetchAll();
                         }} className="p-2 rounded-lg text-red-500 hover:bg-red-50"><FaTrash size={13} /></button>
                       </div>

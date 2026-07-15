@@ -3,6 +3,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { FaFileExcel, FaSearch, FaFilter, FaSync } from "react-icons/fa";
 import Sidebar from "./Sidebar";
 import { DEPARTMENTS, CLASSES_BY_DEPARTMENT } from "./courses";
+import { API_BASE } from './config/api';
 
 const Period = () => {
   const [attendanceData, setAttendanceData]       = useState([]);
@@ -24,8 +25,8 @@ const Period = () => {
     try {
       // ✅ Fetch attendance + ALL timetables from DB (not global periods)
       const [attRes, ttListRes] = await Promise.all([
-        fetch("http://localhost:5001/api/periodwise-attendance"),
-        fetch("http://localhost:5001/api/timetables"),
+        fetch(`${API_BASE}/api/periodwise-attendance`),
+        fetch(`${API_BASE}/api/timetables`),
       ]);
       const attData    = await attRes.json();
       const ttListData = await ttListRes.json();
@@ -38,7 +39,7 @@ const Period = () => {
           ttListData.map(async (tt) => {
             try {
               const res  = await fetch(
-                `http://localhost:5001/api/timetable/${encodeURIComponent(tt.className)}`
+                `${API_BASE}/api/timetable/${encodeURIComponent(tt.className)}`
               );
               const data = await res.json();
               return { className: tt.className, department: tt.department, slots: data?.slots || {} };

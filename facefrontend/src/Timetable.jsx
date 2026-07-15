@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import { DEPARTMENTS, CLASSES_BY_DEPARTMENT, TIME_SLOTS } from "./courses";
+import { API_BASE } from './config/api';
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -117,7 +118,7 @@ const Timetable = () => {
   useEffect(() => {
     if (!selectedClass) return;
     setLoading(true);
-    fetch(`http://localhost:5001/api/timetable/${encodeURIComponent(selectedClass)}`)
+    fetch(`${API_BASE}/api/timetable/${encodeURIComponent(selectedClass)}`)
       .then(r => r.json())
       .then(data => { setTimetable(data?.slots || {}); setLoading(false); })
       .catch(() => { setTimetable({}); setLoading(false); });

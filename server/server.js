@@ -4,9 +4,9 @@ const cors       = require('cors');
 const bodyParser = require('body-parser');
 const bcrypt     = require("bcrypt");
 const jwt        = require("jsonwebtoken");
-const fs         = require('fs');
 const path       = require('path');
 const dotenv     = require('dotenv');
+const fs         = require('fs');
 
 // Load local server env first; if not found, try root project env
 dotenv.config();
@@ -21,9 +21,13 @@ if (!mongoURI) {
 }
 
 const app  = express();
-const PORT = 5001;
+const PORT = process.env.PORT || 5001;
 
-app.use(cors());
+// CORS: allow configured origins in production, all in development
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : null;
+app.use(cors(ALLOWED_ORIGINS ? { origin: ALLOWED_ORIGINS } : {}));
 app.use(bodyParser.json({ limit: "10mb" }));
 
 mongoose.connect(mongoURI)
@@ -167,6 +171,17 @@ const courseManagementSchema = new mongoose.Schema({
   updatedAt:   { type: Date, default: Date.now }
 });
 const CourseManagement = mongoose.model('CourseManagement', courseManagementSchema);
+
+// ── FACE IMAGE SCHEMA (MongoDB storage for cloud deployment) ──────
+const faceImageSchema = new mongoose.Schema({
+  rollNumber: { type: String, unique: true },
+  images: [{
+    filename:   String,
+    data:       Buffer,
+    uploadedAt: { type: Date, default: Date.now }
+  }]
+});
+const FaceImage = mongoose.model('FaceImage', faceImageSchema);
 
 // ── HELPERS ───────────────────────────────────────────────────────
 
@@ -445,14 +460,24 @@ app.post('/api/dept-subjects', async (req, res) => {
   } catch { res.status(500).json({ message: "Failed to update subjects" }); }
 });
 
-// ── FACE MANAGEMENT ───────────────────────────────────────────────
-
+// ── FACE MANAGEMENT (Hybrid MongoDB & Filesystem) ────────────────
 app.delete('/api/student/face/:rollNumber', async (req, res) => {
   const { rollNumber } = req.params;
   try {
+    let deleted = false;
+
+    // 1. Try to delete from MongoDB
+    const result = await FaceImage.findOneAndDelete({ rollNumber });
+    if (result) deleted = true;
+
+    // 2. Try to delete from local disk (if exists)
     const facesPath = path.join(__dirname, '..', 'python-face-api', 'faces', rollNumber);
     if (fs.existsSync(facesPath)) {
       fs.rmSync(facesPath, { recursive: true, force: true });
+      deleted = true;
+    }
+
+    if (deleted) {
       res.json({ message: "Face photos deleted. You can re-enroll now." });
     } else {
       res.json({ message: "No face photos found to delete." });
@@ -466,13 +491,19 @@ app.delete('/api/student/face/:rollNumber', async (req, res) => {
 app.get('/api/student/face-status/:rollNumber', async (req, res) => {
   const { rollNumber } = req.params;
   try {
-    const facesPath = path.join(__dirname, '..', 'python-face-api', 'faces', rollNumber);
-    const exists    = fs.existsSync(facesPath);
-    let count       = 0;
-    if (exists) {
-      count = fs.readdirSync(facesPath).filter(f => f.endsWith('.jpg')).length;
+    // 1. Check MongoDB first
+    const doc = await FaceImage.findOne({ rollNumber });
+    let count = doc ? doc.images.length : 0;
+
+    // 2. Fall back to local filesystem if count is 0
+    if (count === 0) {
+      const facesPath = path.join(__dirname, '..', 'python-face-api', 'faces', rollNumber);
+      if (fs.existsSync(facesPath)) {
+        count = fs.readdirSync(facesPath).filter(f => f.endsWith('.jpg')).length;
+      }
     }
-    res.json({ enrolled: exists && count > 0, photoCount: count });
+
+    res.json({ enrolled: count > 0, photoCount: count });
   } catch {
     res.json({ enrolled: false, photoCount: 0 });
   }

@@ -41,6 +41,11 @@ const Sidebar = () => {
       </div>
 
       <div className="space-y-2 mt-4">
+        <Link to="/">
+          <button className="w-full py-2 rounded-xl border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-100 transition flex items-center justify-center gap-2">
+            <FaHome size={12} /> Attendance Home
+          </button>
+        </Link>
         <Link to="/student-register">
           <button className="w-full py-2 rounded-xl border border-[#1E2A78] text-[#1E2A78] text-sm font-medium hover:bg-blue-50 transition flex items-center justify-center gap-2">
             <FaUser size={12} /> Student Portal

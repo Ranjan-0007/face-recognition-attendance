@@ -1,6 +1,7 @@
 import "./App.css";
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { API_BASE, PYTHON_API_BASE } from './config/api';
 import {
   FaLock, FaCheckCircle, FaCamera, FaTrash, FaTimes,
   FaCalendarAlt, FaExclamationTriangle, FaMedal, FaFire
@@ -27,7 +28,7 @@ const FaceManagement = ({ rollNumber }) => {
 
   const fetchStatus = async () => {
     try {
-      const res  = await fetch(`http://localhost:5001/api/student/face-status/${rollNumber}`);
+      const res  = await fetch(`${API_BASE}/api/student/face-status/${rollNumber}`);
       const data = await res.json();
       setFaceStatus(data);
     } catch { setFaceStatus({ enrolled: false, photoCount: 0 }); }
@@ -54,7 +55,7 @@ const FaceManagement = ({ rollNumber }) => {
     if (!window.confirm("Delete all face photos? You will need to re-enroll.")) return;
     setLoading(true);
     try {
-      const res  = await fetch(`http://localhost:5001/api/student/face/${rollNumber}`, { method: "DELETE" });
+      const res  = await fetch(`${API_BASE}/api/student/face/${rollNumber}`, { method: "DELETE" });
       const data = await res.json();
       showToast(data.message, "success");
       await fetchStatus();
@@ -69,7 +70,7 @@ const FaceManagement = ({ rollNumber }) => {
     canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = canvas.toDataURL("image/jpeg");
     try {
-      const res = await fetch("http://localhost:5002/enroll", {
+      const res = await fetch(`${PYTHON_API_BASE}/enroll`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rollNumber, image: imageData }),
       });
@@ -83,7 +84,7 @@ const FaceManagement = ({ rollNumber }) => {
       } else {
         showToast(`Photo ${newCount}/${TARGET} saved!`, "info");
       }
-    } catch { showToast("Cannot connect to face server (port 5002)", "error"); }
+    } catch { showToast("Cannot connect to face server", "error"); }
     setCapturing(false);
   };
 
@@ -219,11 +220,11 @@ const StudentDashboard = () => {
     const fetchData = async () => {
       try {
         const [periodRes, perSettRes, studentsRes, statsRes, holidayRes] = await Promise.all([
-          fetch(`http://localhost:5001/api/periodwise-attendance?rollNumber=${encodeURIComponent(student.rollNumber)}`),
-          fetch(`http://localhost:5001/api/periods`),
-          fetch(`http://localhost:5001/api/students`),
-          fetch(`http://localhost:5001/api/student/attendance-stats/${encodeURIComponent(student.rollNumber)}`),
-          fetch(`http://localhost:5001/api/holidays/upcoming`).catch(() => ({ json: () => [] })),
+          fetch(`${API_BASE}/api/periodwise-attendance?rollNumber=${encodeURIComponent(student.rollNumber)}`),
+          fetch(`${API_BASE}/api/periods`),
+          fetch(`${API_BASE}/api/students`),
+          fetch(`${API_BASE}/api/student/attendance-stats/${encodeURIComponent(student.rollNumber)}`),
+          fetch(`${API_BASE}/api/holidays/upcoming`).catch(() => ({ json: () => [] })),
         ]);
         const periodData  = await periodRes.json();
         const perSet      = await perSettRes.json();
@@ -259,13 +260,13 @@ const StudentDashboard = () => {
             : null);
 
         if (className) {
-          const ttRes  = await fetch(`http://localhost:5001/api/timetable/${encodeURIComponent(className)}`);
+          const ttRes  = await fetch(`${API_BASE}/api/timetable/${encodeURIComponent(className)}`);
           const ttData = await ttRes.json();
           setTimetable(ttData?.slots || {});
 
           try {
             const today = new Date().toISOString().split('T')[0];
-            const subRes = await fetch(`http://localhost:5001/api/substitutes/today?department=${encodeURIComponent(student.department || "")}`);
+            const subRes = await fetch(`${API_BASE}/api/substitutes/today?department=${encodeURIComponent(student.department || "")}`);
             const subData = await subRes.json();
             setTodaySubstitutes(Array.isArray(subData) ? subData : []);
           } catch (err) {
@@ -295,7 +296,7 @@ const StudentDashboard = () => {
     if (Object.keys(e).length > 0) return;
     setPwLoading(true);
     try {
-      const res  = await fetch("http://localhost:5001/api/student/change-password", {
+      const res  = await fetch(`${API_BASE}/api/student/change-password`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rollNumber: student.rollNumber, currentPassword: pwForm.current, newPassword: pwForm.newPw }),
       });
@@ -448,10 +449,16 @@ const StudentDashboard = () => {
             <p className="text-blue-300 text-xs">Guru Nanak Dev University College</p>
           </div>
         </div>
-        <button onClick={handleLogout}
-          className="px-3 py-1.5 text-xs bg-red-600/80 text-white rounded-lg hover:bg-red-700 transition font-medium">
-          Logout
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate("/")}
+            className="px-3 py-1.5 text-xs bg-white/10 text-white rounded-lg hover:bg-white/20 transition font-medium">
+            Go to Attendance Page
+          </button>
+          <button onClick={handleLogout}
+            className="px-3 py-1.5 text-xs bg-red-600/80 text-white rounded-lg hover:bg-red-700 transition font-medium">
+            Logout
+          </button>
+        </div>
       </div>
 
       {/* Tab Bar */}

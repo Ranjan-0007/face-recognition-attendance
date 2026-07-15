@@ -7,6 +7,7 @@ import {
   TIME_SLOTS,
   DEFAULT_SUBJECTS_BY_DEPARTMENT
 } from "./courses";
+import { API_BASE } from './config/api';
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -32,7 +33,7 @@ const PeriodSettings = () => {
   useEffect(() => {
     if (!selectedClass) return;
     setLoading(true);
-    fetch(`http://localhost:5001/api/timetable/${encodeURIComponent(selectedClass)}`)
+    fetch(`${API_BASE}/api/timetable/${encodeURIComponent(selectedClass)}`)
       .then(r => r.json())
       .then(data => {
         if (data && data.slots && Object.keys(data.slots).length > 0) {
@@ -81,7 +82,7 @@ const PeriodSettings = () => {
     if (!selectedClass) return showToast("Please select a class first", "error");
     setSaving(true);
     try {
-      const res = await fetch("http://localhost:5001/api/timetable", {
+      const res = await fetch(`${API_BASE}/api/timetable`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ className: selectedClass, department: selectedDept, slots: timetable }),

@@ -1,6 +1,7 @@
 import "./App.css";
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { API_BASE } from './config/api';
 
 const HODLogin = () => {
   const navigate  = useNavigate();
@@ -14,7 +15,7 @@ const HODLogin = () => {
     }
     setLoading(true); setError("");
     try {
-      const res  = await fetch("http://localhost:5001/api/hod/login", {
+      const res  = await fetch(`${API_BASE}/api/hod/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

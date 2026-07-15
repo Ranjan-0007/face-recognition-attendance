@@ -6,6 +6,7 @@ import {
   FaClipboardCheck, FaCamera, FaUserPlus
 } from "react-icons/fa";
 import { COURSES_BY_DEPARTMENT, getSemesters } from "./courses";
+import { API_BASE, PYTHON_API_BASE } from './config/api';
 
 const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
@@ -31,6 +32,8 @@ const TeacherDashboard = () => {
     rollNumber: "", name: "", period: "", recognizedAt: ""
   });
   const [manualLoading, setManualLoading]     = useState(false);
+  const [showAllAttendanceLogs, setShowAllAttendanceLogs] = useState(false);
+  const [showAllStudentLogs, setShowAllStudentLogs] = useState(false);
 
   // All unique subjects from teacher's timetable + profile
   const [allMySubjects, setAllMySubjects]     = useState([]);
@@ -64,7 +67,7 @@ const TeacherDashboard = () => {
       let activeTeacher = teacherInfo;
 
       if (token) {
-        const meRes = await fetch("http://localhost:5001/api/teacher/me", {
+        const meRes = await fetch(`${API_BASE}/api/teacher/me`, {
           headers: { "Authorization": `Bearer ${token}` }
         });
         if (meRes.ok) {
@@ -76,17 +79,17 @@ const TeacherDashboard = () => {
       }
 
       const deptValue = activeTeacher.department || dept;
-      const allStudentsRes = await fetch(`http://localhost:5001/api/students?department=${encodeURIComponent(deptValue)}`);
+      const allStudentsRes = await fetch(`${API_BASE}/api/students?department=${encodeURIComponent(deptValue)}`);
       const allStudents    = await allStudentsRes.json();
       const myStudents     = Array.isArray(allStudents)
         ? allStudents.filter(s => (activeTeacher.classes || []).includes(s.className)) : [];
       setStudents(myStudents);
 
-      const perRes  = await fetch("http://localhost:5001/api/periods");
+      const perRes  = await fetch(`${API_BASE}/api/periods`);
       const perData = await perRes.json();
       setPeriods(Array.isArray(perData) ? perData : []);
 
-      const ttRes  = await fetch(`http://localhost:5001/api/teacher-timetable/${encodeURIComponent(activeTeacher.name)}`);
+      const ttRes  = await fetch(`${API_BASE}/api/teacher-timetable/${encodeURIComponent(activeTeacher.name)}`);
       const ttData = await ttRes.json();
       const schedule = ttData?.schedule || {};
       setTeacherSchedule(schedule);
@@ -110,7 +113,7 @@ const TeacherDashboard = () => {
 
       if (derivedSubjects.length > 0) {
         const attPromises = derivedSubjects.map(subject =>
-          fetch(`http://localhost:5001/api/periodwise-attendance?period=${encodeURIComponent(subject)}&confirmed=true`)
+          fetch(`${API_BASE}/api/periodwise-attendance?period=${encodeURIComponent(subject)}&confirmed=true`)
             .then(r => r.json()).catch(() => [])
         );
         const attResults = await Promise.all(attPromises);
@@ -133,7 +136,7 @@ const TeacherDashboard = () => {
     if (!department) return;
     try {
       const today = new Date().toISOString().split('T')[0];
-      const res   = await fetch(`http://localhost:5001/api/substitutes/today?department=${encodeURIComponent(department)}`);
+      const res   = await fetch(`${API_BASE}/api/substitutes/today?department=${encodeURIComponent(department)}`);
       const data  = await res.json();
       setTodaySubstitutes(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -148,7 +151,7 @@ const TeacherDashboard = () => {
       const query = [`department=${encodeURIComponent(activeTeacher.department || dept)}`];
       if (date) query.push(`date=${encodeURIComponent(date)}`);
       else query.push(`today=true`);
-      const res = await fetch(`http://localhost:5001/api/periodwise-attendance?${query.join('&')}`);
+      const res = await fetch(`${API_BASE}/api/periodwise-attendance?${query.join('&')}`);
       const logs = await res.json();
       if (!Array.isArray(logs)) {
         setTodayAttendance([]);
@@ -166,7 +169,7 @@ const TeacherDashboard = () => {
   const confirmAttendance = async (logId) => {
     if (!teacherInfo.name) return;
     try {
-      const res = await fetch(`http://localhost:5001/api/attendance/${logId}/confirm`, {
+      const res = await fetch(`${API_BASE}/api/attendance/${logId}/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ teacherName: teacherInfo.name })
@@ -190,7 +193,7 @@ const TeacherDashboard = () => {
     if (!pendingLogs.length) return;
     if (!subjectFilter) {
       try {
-        const res = await fetch("http://localhost:5001/api/attendance/confirm-all", {
+        const res = await fetch(`${API_BASE}/api/attendance/confirm-all`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ teacherName: teacherInfo.name, date: attendanceDate })
@@ -209,7 +212,7 @@ const TeacherDashboard = () => {
       if (!window.confirm(`Confirm all ${pendingLogs.length} pending records for ${subjectFilter}?`)) return;
       try {
         const promises = pendingLogs.map(log =>
-          fetch(`http://localhost:5001/api/attendance/${log._id}/confirm`, {
+          fetch(`${API_BASE}/api/attendance/${log._id}/confirm`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ teacherName: teacherInfo.name })
@@ -235,7 +238,7 @@ const TeacherDashboard = () => {
     if (!logId) return;
     if (!window.confirm("Delete this unconfirmed attendance record?")) return;
     try {
-      const res = await fetch(`http://localhost:5001/api/attendance/${logId}`, {
+      const res = await fetch(`${API_BASE}/api/attendance/${logId}`, {
         method: "DELETE"
       });
       const data = await res.json();
@@ -258,7 +261,7 @@ const TeacherDashboard = () => {
 
     try {
       const deletePromises = pendingLogs.map(log =>
-        fetch(`http://localhost:5001/api/attendance/${log._id}`, { method: "DELETE" })
+        fetch(`${API_BASE}/api/attendance/${log._id}`, { method: "DELETE" })
           .then(res => ({ res, log }))
           .catch(err => ({ err, log }))
       );
@@ -294,7 +297,7 @@ const TeacherDashboard = () => {
 
   const fetchStudentStats = async (rollNumber) => {
     try {
-      const res  = await fetch(`http://localhost:5001/api/student/attendance-stats/${rollNumber}`);
+      const res  = await fetch(`${API_BASE}/api/student/attendance-stats/${rollNumber}`);
       const data = await res.json();
       setStudentStats(data);
     } catch { setStudentStats(null); }
@@ -346,7 +349,7 @@ const TeacherDashboard = () => {
 
     setManualLoading(true);
     try {
-      const res  = await fetch("http://localhost:5001/api/periodwise-attendance", {
+      const res  = await fetch(`${API_BASE}/api/periodwise-attendance`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
@@ -393,7 +396,7 @@ const TeacherDashboard = () => {
     setDerivedClassName(cn);
     setAddStudentLoading(true);
     try {
-      const profileRes = await fetch("http://localhost:5001/api/students", {
+      const profileRes = await fetch(`${API_BASE}/api/students`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...addStudentForm, department: dept, className: cn }),
       });
@@ -404,7 +407,7 @@ const TeacherDashboard = () => {
           setAddStudentErrors(prev => ({ ...prev, rollNumber: profileData.message }));
         setAddStudentLoading(false); return;
       }
-      const accRes = await fetch("http://localhost:5001/api/admin/create-student-account", {
+      const accRes = await fetch(`${API_BASE}/api/admin/create-student-account`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rollNumber: addStudentForm.rollNumber, password: addStudentForm.password }),
       });
@@ -413,7 +416,7 @@ const TeacherDashboard = () => {
         showToast(`${addStudentForm.name} enrolled! Class: ${cn}`, "success");
         setAddStudentStep("face");
       } else {
-        await fetch("http://localhost:5001/api/student/rollback", {
+        await fetch(`${API_BASE}/api/student/rollback`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ rollNumber: addStudentForm.rollNumber }),
         });
@@ -430,7 +433,7 @@ const TeacherDashboard = () => {
     canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = canvas.toDataURL("image/jpeg");
     try {
-      const res = await fetch("http://localhost:5002/enroll", {
+      const res = await fetch(`${PYTHON_API_BASE}/enroll`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rollNumber: addStudentForm.rollNumber, image: imageData }),
       });
@@ -440,7 +443,7 @@ const TeacherDashboard = () => {
       setCaptureCount(newCount);
       if (newCount >= 5) { showToast("All captures done!", "success"); setAddStudentStep("done"); }
       else showToast(`Photo ${newCount}/5 saved!`, "info");
-    } catch { showToast("Cannot connect to face server (port 5002)", "error"); }
+    } catch { showToast("Cannot connect to face server", "error"); }
     setAddStudentLoading(false);
   };
 
@@ -468,6 +471,8 @@ const TeacherDashboard = () => {
     !subjectFilter || log.period === subjectFilter
   );
   const visiblePresentCount = new Set(filteredSubjectTodayAttendance.map(l => l.rollNumber)).size;
+  const sortedAttendance = [...attendance].sort((a, b) => new Date(b.recognizedAt) - new Date(a.recognizedAt));
+  const displayedAttendance = showAllAttendanceLogs ? sortedAttendance : sortedAttendance.slice(0, 20);
 
   const pad = n => String(n).padStart(2, "0");
   const ic  = "w-full border-2 border-gray-100 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-green-600 bg-gray-50";
@@ -543,9 +548,16 @@ const TeacherDashboard = () => {
                 Load Detailed Stats
               </button>
             )}
-            <h3 className="font-bold text-gray-800 text-sm mb-2">Recent (last 8)</h3>
+            <div className="flex items-center justify-between mb-3 gap-3">
+              <h3 className="font-bold text-gray-800 text-sm">Recent {showAllStudentLogs ? "attendance" : "(last 8)"}</h3>
+              <button onClick={() => setShowAllStudentLogs(prev => !prev)}
+                className="text-xs px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">
+                {showAllStudentLogs ? "Show latest 8" : "Show all"}
+              </button>
+            </div>
             <div className="space-y-1.5">
-              {attendance.filter(l => l.rollNumber === selectedStudent.rollNumber).slice(0, 8).map((log, i) => (
+              {sortedAttendance.filter(l => l.rollNumber === selectedStudent.rollNumber)
+                .slice(0, showAllStudentLogs ? undefined : 8).map((log, i) => (
                 <div key={i} className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
                   <span className="text-xs text-gray-700">{new Date(log.recognizedAt).toLocaleDateString("en-IN")}</span>
                   <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-medium">{log.period}</span>
@@ -923,9 +935,15 @@ const TeacherDashboard = () => {
               </div>
             </div>
             <div className="bg-white rounded-2xl shadow-sm p-5">
-              <h2 className="font-bold text-gray-800 text-sm mb-4">Recent Logs</h2>
-              <div className="overflow-x-auto">
-                <table className="min-w-full table-auto border-separate border-spacing-y-1.5 text-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+              <h2 className="font-bold text-gray-800 text-sm">Recent Logs</h2>
+              <button onClick={() => setShowAllAttendanceLogs(prev => !prev)}
+                className="text-xs px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition">
+                {showAllAttendanceLogs ? "Show latest 20" : "Show all records"}
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full table-auto border-separate border-spacing-y-1.5 text-sm">
                   <thead>
                     <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
                       <th className="text-left px-4 py-3 rounded-l-lg">Name</th>
@@ -935,7 +953,7 @@ const TeacherDashboard = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {attendance.slice(0, 20).map((log, i) => (
+                    {displayedAttendance.map((log, i) => (
                       <tr key={i} className="hover:bg-gray-50 transition cursor-pointer"
                         onClick={() => { const s = students.find(st => st.rollNumber === log.rollNumber); if (s) { setSelectedStudent(s); setStudentStats(null); } }}>
                         <td className="px-4 py-3 font-medium text-gray-800">{log.name}</td>

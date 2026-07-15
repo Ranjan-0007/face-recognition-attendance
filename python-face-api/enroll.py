@@ -10,7 +10,7 @@ import logging
 FACES_DIR      = "faces"
 MAX_IMAGES     = 8             # Max images per student (5 minimum for good accuracy)
 MIN_FACE_PX    = 80            # Reject tiny/distant faces
-BLUR_THRESHOLD = 40.0          # Laplacian variance — below = too blurry
+BLUR_THRESHOLD = 30.0          # Laplacian variance — below = too blurry
 BRIGHTNESS_MIN = 40            # Reject dark images
 BRIGHTNESS_MAX = 225           # Reject overexposed images
 TARGET_SIZE    = (224, 224)    # ArcFace preferred input size
