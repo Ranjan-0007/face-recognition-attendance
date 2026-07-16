@@ -38,16 +38,16 @@ const FaceManagement = ({ rollNumber }) => {
 
   useEffect(() => {
     if (mode !== "recapture") return;
+    let stream = null;
     const startCamera = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
         if (videoRef.current) videoRef.current.srcObject = stream;
       } catch { showToast("Camera access denied", "error"); }
     };
     startCamera();
     return () => {
-      if (videoRef.current?.srcObject)
-        videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+      if (stream) stream.getTracks().forEach(t => t.stop());
     };
   }, [mode]);
 
@@ -211,8 +211,12 @@ const StudentDashboard = () => {
   useEffect(() => {
     const info  = localStorage.getItem("studentInfo");
     const token = localStorage.getItem("studentToken");
-    if (!info || !token) { navigate("/student-register"); return; }
-    setStudent(JSON.parse(info));
+    if (!info || !token || info === "undefined" || info === "null") { navigate("/student-register"); return; }
+    try {
+      setStudent(JSON.parse(info) || {});
+    } catch {
+      navigate("/student-register");
+    }
   }, []);
 
   useEffect(() => {

@@ -24,7 +24,15 @@ function buildClassName(course, semester) {
 
 const HODDashboard = () => {
   const navigate = useNavigate();
-  const hodInfo  = JSON.parse(localStorage.getItem("hodInfo") || "{}");
+  const hodInfo = (() => {
+    try {
+      const info = localStorage.getItem("hodInfo");
+      if (!info || info === "undefined" || info === "null") return {};
+      return JSON.parse(info) || {};
+    } catch {
+      return {};
+    }
+  })();
   const dept     = hodInfo.department || "";
 
   const [activeTab, setActiveTab]       = useState("overview");
@@ -78,19 +86,17 @@ const HODDashboard = () => {
 
   const fetchAll = async () => {
     try {
-      const [teachRes, studRes, attRes, subjRes, perRes, ttRes] = await Promise.all([
+      const [teachRes, studRes, subjRes, perRes, ttRes] = await Promise.all([
         fetch(`${API_BASE}/api/hod/teachers?department=${encodeURIComponent(dept)}`),
         fetch(`${API_BASE}/api/students?department=${encodeURIComponent(dept)}`),
-        fetch(`${API_BASE}/api/periodwise-attendance?department=${encodeURIComponent(dept)}`),
         fetch(`${API_BASE}/api/dept-subjects/${encodeURIComponent(dept)}`),
         fetch(`${API_BASE}/api/periods`),
         fetch(`${API_BASE}/api/timetables?department=${encodeURIComponent(dept)}`),
       ]);
-      const [teachData, studData, attData, subjData, perData, ttData] = await Promise.all([
-        teachRes.json(), studRes.json(), attRes.json(), subjRes.json(), perRes.json(), ttRes.json()
+      const [teachData, studData, subjData, perData, ttData] = await Promise.all([
+        teachRes.json(), studRes.json(), subjRes.json(), perRes.json(), ttRes.json()
       ]);
       setStudents(Array.isArray(studData)  ? studData  : []);
-      setAttendance(Array.isArray(attData) ? attData   : []);
       setPeriods(Array.isArray(perData)    ? perData   : []);
       if (subjData?.isDefault || !subjData?.subjects?.length) {
         setDeptSubjects(DEFAULT_SUBJECTS_BY_DEPARTMENT[dept] || []);
@@ -127,6 +133,22 @@ const HODDashboard = () => {
 
   useEffect(() => { if (dept) fetchAll(); }, []);
 
+  // Fetch attendance logs when attendanceDate changes
+  useEffect(() => {
+    if (!dept) return;
+    const fetchAttendanceLogs = async () => {
+      try {
+        const url = attendanceDate
+          ? `${API_BASE}/api/periodwise-attendance?department=${encodeURIComponent(dept)}&date=${attendanceDate}`
+          : `${API_BASE}/api/periodwise-attendance?department=${encodeURIComponent(dept)}&today=true`;
+        const res = await fetch(url);
+        const data = await res.json();
+        setAttendance(Array.isArray(data) ? data : []);
+      } catch (err) { console.error("Error fetching attendance:", err); }
+    };
+    fetchAttendanceLogs();
+  }, [attendanceDate, dept]);
+
   // ✅ Fetch all department timetables for SubstituteManager
   const fetchAllDeptTimetables = async () => {
     try {
@@ -140,7 +162,7 @@ const HODDashboard = () => {
     } catch { console.error(`Failed to fetch department timetables`); }
   };
 
-  useEffect(() => { if (deptClasses.length) fetchAllDeptTimetables(); }, [deptClasses]);
+  useEffect(() => { if (deptClasses.length) fetchAllDeptTimetables(); }, [dept]);
 
   // Load timetable when class selected
   useEffect(() => {
@@ -175,16 +197,16 @@ const HODDashboard = () => {
   // Camera for face capture
   useEffect(() => {
     if (addStudentStep !== "face") return;
+    let stream = null;
     const startCamera = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
         if (videoRef.current) videoRef.current.srcObject = stream;
       } catch { showToast("Camera access denied", "error"); }
     };
     startCamera();
     return () => {
-      if (videoRef.current?.srcObject)
-        videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+      if (stream) stream.getTracks().forEach(t => t.stop());
     };
   }, [addStudentStep]);
 

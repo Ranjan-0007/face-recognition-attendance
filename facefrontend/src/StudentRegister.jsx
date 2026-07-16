@@ -39,7 +39,7 @@ const StudentRegister = () => {
 
   useEffect(() => {
     if (step === 2) startCamera();
-    return () => { if (step !== 2) stopCamera(); };
+    return () => { stopCamera(); };
   }, [step]);
 
   const startCamera = async () => {

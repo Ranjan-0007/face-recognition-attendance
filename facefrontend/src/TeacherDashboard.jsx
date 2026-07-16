@@ -12,7 +12,15 @@ const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
 const TeacherDashboard = () => {
   const navigate    = useNavigate();
-  const [teacherInfo, setTeacherInfo] = useState(() => JSON.parse(localStorage.getItem("teacherInfo") || "{}"));
+  const [teacherInfo, setTeacherInfo] = useState(() => {
+    try {
+      const info = localStorage.getItem("teacherInfo");
+      if (!info || info === "undefined" || info === "null") return {};
+      return JSON.parse(info) || {};
+    } catch {
+      return {};
+    }
+  });
 
   const [activeTab, setActiveTab]             = useState("timetable");
   const [students, setStudents]               = useState([]);
@@ -282,16 +290,16 @@ const TeacherDashboard = () => {
   // Camera for face capture
   useEffect(() => {
     if (addStudentStep !== "face") return;
+    let stream = null;
     const start = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
         if (videoRef.current) videoRef.current.srcObject = stream;
       } catch { showToast("Camera access denied", "error"); }
     };
     start();
     return () => {
-      if (videoRef.current?.srcObject)
-        videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+      if (stream) stream.getTracks().forEach(t => t.stop());
     };
   }, [addStudentStep]);
 

@@ -43,17 +43,17 @@ const Addstudent = () => {
   // Start camera when entering face step
   useEffect(() => {
     if (enrollStep !== "face") return;
+    let stream = null;
     const startCamera = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video:true });
+        stream = await navigator.mediaDevices.getUserMedia({ video:true });
         if (videoRef.current) videoRef.current.srcObject = stream;
         setCameraReady(true);
       } catch { showToast("Camera access denied", "error"); }
     };
     startCamera();
     return () => {
-      if (videoRef.current?.srcObject)
-        videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+      if (stream) stream.getTracks().forEach(t => t.stop());
     };
   }, [enrollStep]);
 

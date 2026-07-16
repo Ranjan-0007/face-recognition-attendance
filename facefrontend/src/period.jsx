@@ -25,7 +25,9 @@ const Period = () => {
     try {
       // ✅ Fetch attendance + ALL timetables from DB (not global periods)
       const [attRes, ttListRes] = await Promise.all([
-        fetch(`${API_BASE}/api/periodwise-attendance`),
+        fetch(filterDate
+          ? `${API_BASE}/api/periodwise-attendance?date=${filterDate}`
+          : `${API_BASE}/api/periodwise-attendance?today=true`),
         fetch(`${API_BASE}/api/timetables`),
       ]);
       const attData    = await attRes.json();
@@ -58,6 +60,21 @@ const Period = () => {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  // Re-fetch attendance when filterDate changes
+  useEffect(() => {
+    const fetchByDate = async () => {
+      try {
+        const url = filterDate
+          ? `${API_BASE}/api/periodwise-attendance?date=${filterDate}`
+          : `${API_BASE}/api/periodwise-attendance?today=true`;
+        const res = await fetch(url);
+        const data = await res.json();
+        setAttendanceData(Array.isArray(data) ? data : []);
+      } catch (err) { console.error("Date fetch error:", err); }
+    };
+    fetchByDate();
+  }, [filterDate]);
 
   const handleRefresh = () => { setRefreshing(true); fetchAll(); };
 

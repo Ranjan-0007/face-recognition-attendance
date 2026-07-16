@@ -30,9 +30,10 @@ const Front = () => {
   }, []);
 
   useEffect(() => {
+    let stream = null;
     const getCamera = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
         if (videoRef.current) videoRef.current.srcObject = stream;
       } catch (err) {
         console.error("Camera error:", err);
@@ -41,6 +42,9 @@ const Front = () => {
       }
     };
     getCamera();
+    return () => {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+    };
   }, []);
 
   const formatTime = (h, m) => {
@@ -82,6 +86,11 @@ const Front = () => {
 
     const canvas = canvasRef.current;
     const video  = videoRef.current;
+    if (!canvas || !video) {
+      setStatus("error");
+      setMessage("Camera not ready. Please try again.");
+      return;
+    }
     canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = canvas.toDataURL("image/jpeg");
 

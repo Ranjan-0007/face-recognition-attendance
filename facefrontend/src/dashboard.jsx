@@ -49,14 +49,12 @@ const Dashboard = () => {
 
   const fetchAll = async () => {
     try {
-      const [logsRes, studRes, hodRes, teachRes, perRes] = await Promise.all([
-        axios.get(`${API_BASE}/api/periodwise-attendance`),
+      const [studRes, hodRes, teachRes, perRes] = await Promise.all([
         axios.get(`${API_BASE}/api/students`),
         fetch(`${API_BASE}/api/admin/hods`),
         fetch(`${API_BASE}/api/admin/teachers`),
         fetch(`${API_BASE}/api/periods`),
       ]);
-      setPeriodLogs(Array.isArray(logsRes.data) ? logsRes.data : []);
       setStudents(Array.isArray(studRes.data)   ? studRes.data : []);
       const hodData   = await hodRes.json();
       const teachData = await teachRes.json();
@@ -68,6 +66,20 @@ const Dashboard = () => {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  // Fetch period logs when selectedDate changes
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const url = selectedDate
+          ? `${API_BASE}/api/periodwise-attendance?date=${selectedDate}`
+          : `${API_BASE}/api/periodwise-attendance?today=true`;
+        const res = await axios.get(url);
+        setPeriodLogs(Array.isArray(res.data) ? res.data : []);
+      } catch (err) { console.error("Error fetching logs:", err); }
+    };
+    fetchLogs();
+  }, [selectedDate]);
 
   // Load timetable for view (read-only)
   const handleViewTimetable = async () => {

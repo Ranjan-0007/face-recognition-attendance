@@ -1,7 +1,6 @@
 const express    = require('express');
 const mongoose   = require('mongoose');
 const cors       = require('cors');
-const bodyParser = require('body-parser');
 const bcrypt     = require("bcrypt");
 const jwt        = require("jsonwebtoken");
 const path       = require('path');
@@ -28,11 +27,24 @@ const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : null;
 app.use(cors(ALLOWED_ORIGINS ? { origin: ALLOWED_ORIGINS } : {}));
-app.use(bodyParser.json({ limit: "10mb" }));
+app.use(express.json({ limit: "10mb" }));
 
 mongoose.connect(mongoURI)
   .then(() => console.log("✅ MongoDB connected"))
   .catch(err => console.error("❌ MongoDB error:", err.message));
+
+// ── MongoDB connection monitoring ────────────────────────────────
+mongoose.connection.on('disconnected', () => console.warn('⚠️  MongoDB disconnected. Reconnecting...'));
+mongoose.connection.on('reconnected', () => console.log('✅ MongoDB reconnected'));
+mongoose.connection.on('error', (err) => console.error('❌ MongoDB connection error:', err.message));
+
+// ── Global error handlers (prevent silent crashes) ──────────────
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+});
 
 // ── SCHEMAS ──────────────────────────────────────────────────────
 
@@ -1452,6 +1464,12 @@ app.delete('/api/admin/courses', async (req, res) => {
     console.error('Error deleting course:', err);
     res.status(500).json({ message: 'Failed to delete course' });
   }
+});
+
+// ── Global Express error handler ────────────────────────────────
+app.use((err, req, res, next) => {
+  console.error('❌ Express error:', err.stack || err.message || err);
+  res.status(500).json({ message: 'Internal server error' });
 });
 
 app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));
